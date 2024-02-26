@@ -7,6 +7,113 @@ using namespace std;
 #define OLC_PGE_APPLICATION
 #include "olcPixelGameEngine.h"
 
+// Port DrawWireFrameModel function from Console Game Engine
+void DrawWireFrameModel(olc::PixelGameEngine* engine, const std::vector<std::pair<float, float>>& vecModelCoordinates,
+	float x, float y, float r = 0.0f, float s = 1.0f, olc::Pixel col = olc::WHITE)
+{
+	// vecModelCoordinates : the wire frame model
+	// x, y : the screenposition where to draw it
+	// r : angle of rotation
+	// s : scaling factor
+
+	// Create translated model vector of coordinate pairs
+	std::vector<std::pair<float, float>> vecTransformedCoordinates;		// pair.first : x coordinate, pair.second : y coordinate
+	int verts = vecModelCoordinates.size();		// Keep the model vector static
+	vecTransformedCoordinates.resize(verts);		// Create another vector the same size as the model vector
+
+	// Rotate
+	for (int i = 0; i < verts; i++)
+	{
+		vecTransformedCoordinates[i].first = vecModelCoordinates[i].first * cosf(r) - vecModelCoordinates[i].second * sinf(r);
+		vecTransformedCoordinates[i].second = vecModelCoordinates[i].first * sinf(r) + vecModelCoordinates[i].second * cosf(r);
+	}
+
+	// Scale
+	for (int i = 0; i < verts; i++)
+	{
+		vecTransformedCoordinates[i].first = vecTransformedCoordinates[i].first * s;
+		vecTransformedCoordinates[i].second = vecTransformedCoordinates[i].second * s;
+	}
+
+	// Translate
+	for (int i = 0; i < verts; i++)
+	{
+		vecTransformedCoordinates[i].first = vecTransformedCoordinates[i].first + x;
+		vecTransformedCoordinates[i].second = vecTransformedCoordinates[i].second + y;
+	}
+
+	// Draw closed polygon
+	for (int i = 0; i < verts + 1; i++)
+	{
+		int j = (i + 1);
+		engine->DrawLine(vecTransformedCoordinates[i % verts].first, vecTransformedCoordinates[i % verts].second,
+			vecTransformedCoordinates[j % verts].first, vecTransformedCoordinates[j % verts].second, col);
+	}
+}
+
+// Physics engine
+class cPhysicsObject
+{
+public:
+	// Position
+	float px = 0.0f;
+	float py = 0.0f;
+	// Velocity
+	float vx = 0.0f;
+	float vy = 0.0f;
+	// Acceleration
+	float ax = 0.0f;
+	float ay = 0.0f;
+
+	float radius = 4.0f;		// Represents collision boundary of an object
+	bool bStable = false;		// Represents whether object is stable/stopped moving
+
+	// Default constructor that sets position
+	cPhysicsObject(float x = 0.0f, float y = 0.0f)
+	{
+		px = x;
+		py = y;
+	}
+
+	// Makes the class abstract
+	virtual void Draw(olc::PixelGameEngine* engine, float fOffsetX, float fOffsetY) = 0;
+};
+
+class cDummy : public cPhysicsObject
+{
+public:
+	cDummy(float x = 0.0f, float y = 0.0f) : cPhysicsObject(x, y)
+	{
+
+	}
+
+	virtual void Draw(olc::PixelGameEngine* engine, float fOffsetX, float fOffsetY)
+	{
+		DrawWireFrameModel(engine, vecModel, px - fOffsetX, py - fOffsetY, atan2f(vy, vx), radius, olc::WHITE);
+		// vecModel : Drawn model data
+		// p - fOffset :  (x,y) Coordinates
+		// atan2f() : Angle object is rotated
+		// radius : Scales object's size
+		// olc::WHITE : Makes characters white
+	}
+
+private:
+	static vector<pair<float, float>> vecModel;		// Allows one model to be shared across all objects of the same class
+};
+
+vector<pair<float, float>> DefineDummy()		// Creates a unit circle with a line fom center to edge
+{
+	vector<pair<float, float>> vecModel;
+	vecModel.push_back({ 0.0f, 0.0f });
+
+	for (int i = 0; i < 10; i++)
+		vecModel.push_back({ cosf(i / 9.0f * 2.0f * 3.14159f), sinf(i / 9.0f * 2.0f * 3.14159f) });
+
+	return vecModel;
+}
+
+vector<pair<float, float>> cDummy::vecModel = DefineDummy();
+
 class Worms : public olc::PixelGameEngine
 {
 public:
@@ -24,6 +131,8 @@ private:
 	// For camera control
 	float fCameraPosX = 0.0f;
 	float fCameraPosY = 0.0f;
+
+	list<cPhysicsObject*> listObjects;		// Allows multiple types of objects in list
 
 	virtual bool OnUserCreate()
 	{
