@@ -149,6 +149,12 @@ private:
 		if (GetKey(olc::Key::M).bReleased)		// Whenever 'M' key is released, generate new map
 			CreateMap();
 
+		if (GetMouse(2).bReleased)		// Creates a dummy object wherever the middle button is clicked
+		{
+			cDummy* p = new cDummy(GetMouseX() + fCameraPosX, GetMouseY() + fCameraPosY);
+			listObjects.push_back(p);
+		}
+
 		// Controller camera for mouse edge map scrolling
 		float fMapScrollSpeed = 400.0f;
 		if (GetMouseX() < 5)		// If within 5 pixels on screen edge, move camera position
@@ -170,6 +176,29 @@ private:
 		if (fCameraPosY >= nMapHeight - ScreenHeight())
 			fCameraPosY = nMapHeight - ScreenHeight();
 
+		for (auto& p : listObjects)		// Updates physics of all physical objects
+		{
+			// Applies gravity
+			p->ay += 2.0f;		
+
+			// Updates Velocity
+			p->vx += p->ax * fElapsedTime;
+			p->vy += p->ay * fElapsedTime;
+
+			// Updates potential future position
+			float fPotentialX = p->px + p->vx * fElapsedTime;
+			float fPotentialY = p->py + p->vy * fElapsedTime;
+
+			// Resets acceleration and stability
+			p->ax - 0.0f;
+			p->ay = 0.0f;
+			p->bStable = false;
+
+			// Updates objects position with potential x,y coordinates
+			p->px = fPotentialX;
+			p->py = fPotentialY;
+		}
+
 		// Draws landscape terrain
 		for (int x = 0; x < ScreenWidth(); x++)		// Iterate through all pixels on screen
 			for (int y = 0; y < ScreenHeight(); y++)
@@ -184,6 +213,9 @@ private:
 					break;
 				}
 			}
+		
+		for (auto& p : listObjects)		// Draws Objects
+			p->Draw(this, fCameraPosX, fCameraPosY);
 
 		return true;
 	}
