@@ -176,28 +176,71 @@ private:
 		if (fCameraPosY >= nMapHeight - ScreenHeight())
 			fCameraPosY = nMapHeight - ScreenHeight();
 
-		for (auto& p : listObjects)		// Updates physics of all physical objects
+		for (int z = 0; z < 10; z++)
 		{
-			// Applies gravity
-			p->ay += 2.0f;		
+			for (auto& p : listObjects)		// Updates physics of all physical objects
+			{
+				// Applies gravity
+				p->ay += 2.0f;
 
-			// Updates Velocity
-			p->vx += p->ax * fElapsedTime;
-			p->vy += p->ay * fElapsedTime;
+				// Updates Velocity
+				p->vx += p->ax * fElapsedTime;
+				p->vy += p->ay * fElapsedTime;
 
-			// Updates potential future position
-			float fPotentialX = p->px + p->vx * fElapsedTime;
-			float fPotentialY = p->py + p->vy * fElapsedTime;
+				// Updates potential future position
+				float fPotentialX = p->px + p->vx * fElapsedTime;
+				float fPotentialY = p->py + p->vy * fElapsedTime;
 
-			// Resets acceleration and stability
-			p->ax - 0.0f;
-			p->ay = 0.0f;
-			p->bStable = false;
+				// Resets acceleration and stability
+				p->ax - 0.0f;
+				p->ay = 0.0f;
+				p->bStable = false;
 
-			// Updates objects position with potential x,y coordinates
-			p->px = fPotentialX;
-			p->py = fPotentialY;
+				// Checks colision with the map 
+				float fAngle = atan2f(p->vy, p->vx);		
+				float fResponseX = 0;
+				float fResponseY = 0;
+				bool bCollision = false;
+
+				// Iterates though a semicircle of an object's radius that's rotated towards the direction of travel
+				for (float r = fAngle - 3.14159f / 2.0f; r < fAngle + 3.14159f / 2.0f; r += 3.14159f / 8.0f)
+				{
+					// Calculates the test point on circumference of circle
+					float fTestPosX = (p->radius) * cosf(r) + fPotentialX;
+					float fTestPosY = (p->radius) * sinf(r) + fPotentialY;
+
+					// Constrains to test within the map's boundary
+					if (fTestPosX >= nMapWidth) fTestPosX = nMapWidth - 1;
+					if (fTestPosY >= nMapHeight) fTestPosX = nMapHeight - 1;
+					if (fTestPosX < 0) fTestPosX = 0;
+					if (fTestPosY < 0) fTestPosY = 0;
+
+					// Tests if any of the points on an object's semicircle intersects with the terrian
+					if (map[(int)fTestPosY * nMapWidth + (int)fTestPosX] != 0)
+					{
+						// Accumulates collision points to define the normal vector for escape response
+						fResponseX += fPotentialX - fTestPosX;
+						fResponseY += fPotentialY - fTestPosY;
+						bCollision = true;
+
+					}
+
+					// Find angle of collision
+					if (bCollision)		// If collision has occured, respond
+					{
+
+					}
+					else		// Else allow it to use the potential positions
+					{
+						// Updates objects position with potential x,y coordinates
+						p->px = fPotentialX;
+						p->py = fPotentialY;
+					}
+				}
+			}
 		}
+
+		
 
 		// Draws landscape terrain
 		for (int x = 0; x < ScreenWidth(); x++)		// Iterate through all pixels on screen
