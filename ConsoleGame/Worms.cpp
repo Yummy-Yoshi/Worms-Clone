@@ -8,7 +8,7 @@ using namespace std;
 #include "olcPixelGameEngine.h"
 
 // Port DrawWireFrameModel function from Console Game Engine
-void DrawWireFrameModel(olc::PixelGameEngine* engine, const std::vector<std::pair<float, float>>& vecModelCoordinates,
+void DrawWireFrameModel(olc::PixelGameEngine* engine, const vector<pair<float, float>>& vecModelCoordinates,
 	float x, float y, float r = 0.0f, float s = 1.0f, olc::Pixel col = olc::WHITE)
 {
 	// vecModelCoordinates : the wire frame model
@@ -17,7 +17,7 @@ void DrawWireFrameModel(olc::PixelGameEngine* engine, const std::vector<std::pai
 	// s : scaling factor
 
 	// Create translated model vector of coordinate pairs
-	std::vector<std::pair<float, float>> vecTransformedCoordinates;		// pair.first : x coordinate, pair.second : y coordinate
+	vector<pair<float, float>> vecTransformedCoordinates;		// pair.first : x coordinate, pair.second : y coordinate
 	int verts = vecModelCoordinates.size();		// Keep the model vector static
 	vecTransformedCoordinates.resize(verts);		// Create another vector the same size as the model vector
 
@@ -67,6 +67,10 @@ public:
 
 	float radius = 4.0f;		// Represents collision boundary of an object
 	bool bStable = false;		// Represents whether object is stable/stopped moving
+	float fFriction = 0.8f;		// Represents the dampening factor for an object's collision
+
+	int nBounceBeforeDeath = -1;		// Represents number of times an object can bounce before 'dying'; -1 means infinite bounces
+	bool bDead = false;					// Represents indicator to check if object should be removed
 
 	// Default constructor that sets position
 	cPhysicsObject(float x = 0.0f, float y = 0.0f)
@@ -114,6 +118,40 @@ vector<pair<float, float>> DefineDummy()		// Creates a unit circle with a line f
 
 vector<pair<float, float>> cDummy::vecModel = DefineDummy();
 
+class cDebris : public cPhysicsObject // a small rock that bounces
+{
+public:
+	cDebris(float x = 0.0f, float y = 0.0f) : cPhysicsObject(x, y)
+	{
+		// Sets velocity to random direction and size to make a "boom" effect
+		vx = 10.0f * cosf(((float)rand() / (float)RAND_MAX) * 2.0f * 3.14159f);
+		vy = 10.0f * sinf(((float)rand() / (float)RAND_MAX) * 2.0f * 3.14159f);
+		radius = 1.0f;
+		fFriction = 0.8f;
+		nBounceBeforeDeath = 5;
+	}
+
+	virtual void Draw(olc::PixelGameEngine* engine, float fOffsetX, float fOffsetY)
+	{
+		DrawWireFrameModel(engine, vecModel, px - fOffsetX, py - fOffsetY, atan2f(vy, vx), radius, olc::DARK_GREEN);
+	}
+
+private:
+	static vector<pair<float, float>> vecModel;
+};
+
+vector<pair<float, float>> DefineDebris()
+{
+	// A small unit rectangle
+	vector<pair<float, float>> vecModel;
+	vecModel.push_back({ 0.0f, 0.0f });
+	vecModel.push_back({ 1.0f, 0.0f });
+	vecModel.push_back({ 1.0f, 1.0f });
+	vecModel.push_back({ 0.0f, 1.0f });
+	return vecModel;
+}
+vector<pair<float, float>> cDebris::vecModel = DefineDebris();
+
 class Worms : public olc::PixelGameEngine
 {
 public:
@@ -132,7 +170,7 @@ private:
 	float fCameraPosX = 0.0f;
 	float fCameraPosY = 0.0f;
 
-	list<cPhysicsObject*> listObjects;		// Allows multiple types of objects in list
+	list<unique_ptr<cPhysicsObject>> listObjects;		// Allows multiple types of objects in list
 
 	virtual bool OnUserCreate()
 	{
@@ -149,10 +187,16 @@ private:
 		if (GetKey(olc::Key::M).bReleased)		// Whenever 'M' key is released, generate new map
 			CreateMap();
 
-		if (GetMouse(2).bReleased)		// Creates a dummy object wherever the middle button is clicked
+		if (GetMouse(0).bReleased)		// Lanches debris wherever the left mouse button is released
+		{
+			for (int i = 0; i < 20; i++)
+				listObjects.push_back(unique_ptr<cDebris>(new cDebris(GetMouseX() + fCameraPosX, GetMouseY() + fCameraPosY)));
+		}
+
+		if (GetMouse(2).bReleased)		// Creates a dummy object wherever the middle mouse button is released
 		{
 			cDummy* p = new cDummy(GetMouseX() + fCameraPosX, GetMouseY() + fCameraPosY);
-			listObjects.push_back(p);
+			listObjects.push_back(unique_ptr<cDummy>(p));
 		}
 
 		// Controller camera for mouse edge map scrolling
@@ -224,20 +268,43 @@ private:
 						bCollision = true;
 
 					}
+				}
+
+					// Calculates magnitudes of response and velocity vectors
+					float fMagVelocity = sqrtf(p->vx * p->vx + p->vy * p->vy);
+					float fMagResponse = sqrtf(fResponseX * fResponseX + fResponseY * fResponseY);
 
 					// Find angle of collision
 					if (bCollision)		// If collision has occured, respond
 					{
+						p->bStable = true;
+												
+						// Calculates reflection vector of objects velocity vector, using response vector as normal
+						float dot = p->vx * (fResponseX / fMagResponse) + p->vy * (fResponseY / fMagResponse);
 
+						// Uses the friction coefficient to dampen response (approximates energy loss)
+						p->vx = p->fFriction * (-2.0f * dot * (fResponseX / fMagResponse) + p->vx);
+						p->vy = p->fFriction * (-2.0f * dot * (fResponseY / fMagResponse) + p->vy);
+
+						if (p->nBounceBeforeDeath > 0)		// Makes some objects 'die' after several bounces
+						{
+							p->nBounceBeforeDeath--;
+							p->bDead = p->nBounceBeforeDeath == 0;
+						}
 					}
-					else		// Else allow it to use the potential positions
+					else		// Else allow it to use the new potential positions
 					{
 						// Updates objects position with potential x,y coordinates
 						p->px = fPotentialX;
 						p->py = fPotentialY;
 					}
-				}
+
+					// Makes objects stop moving when velocity is low
+					if (fMagVelocity < 0.1f)
+						p->bStable = true;
 			}
+			// Removes objects from list if dead flag is true; Because it is a unique ptr, will go out of scope and automatically delete
+			listObjects.remove_if([](unique_ptr<cPhysicsObject>& o) {return o->bDead;});
 		}
 
 		
