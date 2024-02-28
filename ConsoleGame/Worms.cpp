@@ -84,7 +84,7 @@ public:
 	virtual int BounceDeathAction() = 0;
 };
 
-class cDummy : public cPhysicsObject
+class cDummy : public cPhysicsObject		// Does nothing, shows a marker that helps with physics debug and test
 {
 public:
 	cDummy(float x = 0.0f, float y = 0.0f) : cPhysicsObject(x, y)
@@ -123,7 +123,7 @@ vector<pair<float, float>> DefineDummy()		// Creates a unit circle with a line f
 }
 vector<pair<float, float>> cDummy::vecModel = DefineDummy();
 
-class cDebris : public cPhysicsObject // a small rock that bounces
+class cDebris : public cPhysicsObject // A small rock that bounces
 {
 public:
 	cDebris(float x = 0.0f, float y = 0.0f) : cPhysicsObject(x, y)
@@ -133,7 +133,7 @@ public:
 		vy = 10.0f * sinf(((float)rand() / (float)RAND_MAX) * 2.0f * 3.14159f);
 		radius = 1.0f;
 		fFriction = 0.8f;
-		nBounceBeforeDeath = 5;
+		nBounceBeforeDeath = 5;		// Deletes after bouncing 5 times
 	}
 
 	virtual void Draw(olc::PixelGameEngine* engine, float fOffsetX, float fOffsetY)
@@ -265,11 +265,10 @@ private:
 	float fCameraPosX = 0.0f;
 	float fCameraPosY = 0.0f;
 
-	list<unique_ptr<cPhysicsObject>> listObjects;		// Allows multiple types of objects in list
+	list<unique_ptr<cPhysicsObject>> listObjects;		// Allows multiple types of objects in list; the list of objects in game
 
-	virtual bool OnUserCreate()
+	virtual bool OnUserCreate()		// Creates the map
 	{
-		// Create the map
 		map = new unsigned char[nMapWidth * nMapHeight];		// Allocate memory for 2D array
 		memset(map, 0, nMapWidth * nMapHeight * sizeof(unsigned char));		// Clear all to 0
 		CreateMap();
@@ -312,7 +311,7 @@ private:
 		if (fCameraPosY >= nMapHeight - ScreenHeight())
 			fCameraPosY = nMapHeight - ScreenHeight();
 
-		for (int z = 0; z < 10; z++)
+		for (int z = 0; z < 10; z++)		// Does 10 physics iterations/frame for accurate, controllable calculations
 		{
 			for (auto& p : listObjects)		// Updates physics of all physical objects
 			{
@@ -358,7 +357,6 @@ private:
 						fResponseX += fPotentialX - fTestPosX;
 						fResponseY += fPotentialY - fTestPosY;
 						bCollision = true;
-
 					}
 				}
 
