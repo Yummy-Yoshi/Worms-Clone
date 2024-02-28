@@ -327,6 +327,34 @@ private:
 
 	void Boom(float fWorldX, float fWorldY, float fRadius)		// Launches debris
 	{
+		auto CircleBresenham = [&](int xc, int yc, int r)		// Bresenham's midpoint circle algorithm sourced from wikipedia
+		{
+			int x = 0;
+			int y = r;
+			int p = 3 - 2 * r;
+			if (!r) return;
+
+			auto drawline = [&](int sx, int ex, int ny)
+			{
+				for (int i = sx; i < ex; i++)
+					if (ny >= 0 && ny < nMapHeight && i >= 0 && i < nMapWidth)
+						map[ny * nMapWidth + i] = 0;
+			};
+
+			while (y >= x)		// Only makes 1/8 of the circle
+			{
+				// Modified to draw scan-lines instead of edges
+				drawline(xc - x, xc + x, yc - y);
+				drawline(xc - y, xc + y, yc - x);
+				drawline(xc - x, xc + x, yc + y);
+				drawline(xc - y, xc + y, yc + x);
+				if (p < 0) p += 4 * x++ + 6;
+				else p += 4 * (x++ - y--) + 10;
+			}
+		};
+
+		CircleBresenham(fWorldX, fWorldY, fRadius);		// Erases terrain to form a crater
+
 		for (auto& p : listObjects)		// Knocks back other objects in range using pythagorean theorem
 		{
 			float dx = p->px - fWorldX;
