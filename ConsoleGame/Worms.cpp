@@ -188,10 +188,7 @@ private:
 			CreateMap();
 
 		if (GetMouse(0).bReleased)		// Lanches debris wherever the left mouse button is released
-		{
-			for (int i = 0; i < 20; i++)
-				listObjects.push_back(unique_ptr<cDebris>(new cDebris(GetMouseX() + fCameraPosX, GetMouseY() + fCameraPosY)));
-		}
+			Boom(GetMouseX() + fCameraPosX, GetMouseY() + fCameraPosY, 10.0f);
 
 		if (GetMouse(2).bReleased)		// Creates a dummy object wherever the middle mouse button is released
 		{
@@ -307,8 +304,6 @@ private:
 			listObjects.remove_if([](unique_ptr<cPhysicsObject>& o) {return o->bDead;});
 		}
 
-		
-
 		// Draws landscape terrain
 		for (int x = 0; x < ScreenWidth(); x++)		// Iterate through all pixels on screen
 			for (int y = 0; y < ScreenHeight(); y++)
@@ -329,6 +324,31 @@ private:
 
 		return true;
 	}
+
+	void Boom(float fWorldX, float fWorldY, float fRadius)		// Launches debris
+	{
+		for (auto& p : listObjects)		// Knocks back other objects in range using pythagorean theorem
+		{
+			float dx = p->px - fWorldX;
+			float dy = p->py - fWorldY;
+			float fDist = sqrt(dx * dx + dy * dy);
+
+			if (fDist < 0.0001f) fDist = 0.0001f;		// Prevents possible division by zero
+
+			if (fDist < fRadius)		// Closer objects to explosion get bigger boost
+			{
+				p->vx = (dx / fDist) * fRadius;
+				p->vy = (dy / fDist) * fRadius;
+				p->bStable = false;
+			}
+		}
+
+
+		for (int i = 0; i < (int)fRadius; i++)		// Radius allows big explosions to make lots of debris and small ones to make fewer
+			listObjects.push_back(unique_ptr<cDebris>(new cDebris(fWorldX, fWorldY)));
+
+	}
+
 
 	void CreateMap()
 	{
