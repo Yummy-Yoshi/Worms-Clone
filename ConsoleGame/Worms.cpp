@@ -121,7 +121,6 @@ vector<pair<float, float>> DefineDummy()		// Creates a unit circle with a line f
 
 	return vecModel;
 }
-
 vector<pair<float, float>> cDummy::vecModel = DefineDummy();
 
 class cDebris : public cPhysicsObject // a small rock that bounces
@@ -161,7 +160,6 @@ vector<pair<float, float>> DefineDebris()
 	vecModel.push_back({ 0.0f, 1.0f });
 	return vecModel;
 }
-
 vector<pair<float, float>> cDebris::vecModel = DefineDebris();
 
 class cMissile : public cPhysicsObject // A projectile weapon
@@ -217,6 +215,38 @@ vector<pair<float, float>> DefineMissile()
 }
 vector<pair<float, float>> cMissile::vecModel = DefineMissile();
 
+class cWorm : public cPhysicsObject		// A unit, aka a Worm
+{
+public:
+	cWorm(float x = 0.0f, float y = 0.0f) : cPhysicsObject(x, y)
+	{
+		radius = 3.5f;
+		fFriction = 0.2f;
+		bDead = false;
+		nBounceBeforeDeath = -1;
+		
+		if (sprWorm == nullptr)		// Loads sprite data from sprite file
+			sprWorm = new olc::Sprite("Sprites/worms.png");
+	}
+
+	virtual void Draw(olc::PixelGameEngine* engine, float fOffsetX, float fOffsetY)
+	{
+		engine->SetPixelMode(olc::Pixel::Mode::MASK);
+		engine->DrawPartialSprite(px - fOffsetX - radius, py - fOffsetY - radius, sprWorm, 0, 0, 8, 8);
+		engine->SetPixelMode(olc::Pixel::Mode::NORMAL);
+	}
+
+	virtual int BounceDeathAction()
+	{
+		return 0;		// Nothing
+	}
+
+private:
+	static olc::Sprite* sprWorm;
+};
+
+olc::Sprite* cWorm::sprWorm = nullptr;
+
 class Worms : public olc::PixelGameEngine
 {
 public:
@@ -258,11 +288,8 @@ private:
 		if (GetMouse(1).bReleased)		// Drops a missile wherever the right mouse button is released
 			listObjects.push_back(unique_ptr<cMissile>(new cMissile(GetMouseX() + fCameraPosX, GetMouseY() + fCameraPosY)));
 
-		if (GetMouse(2).bReleased)		// Creates a dummy object wherever the middle mouse button is released
-		{
-			cDummy* p = new cDummy(GetMouseX() + fCameraPosX, GetMouseY() + fCameraPosY);
-			listObjects.push_back(unique_ptr<cDummy>(p));
-		}
+		if (GetMouse(2).bReleased)		// Creates a Worm/unit object wherever the middle mouse button is released
+			listObjects.push_back(unique_ptr<cWorm>(new cWorm(GetMouseX() + fCameraPosX, GetMouseY() + fCameraPosY)));
 
 		// Controller camera for mouse edge map scrolling
 		float fMapScrollSpeed = 400.0f;
