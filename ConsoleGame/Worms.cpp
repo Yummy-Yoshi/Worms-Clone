@@ -81,6 +81,7 @@ public:
 
 	// Makes the class abstract
 	virtual void Draw(olc::PixelGameEngine* engine, float fOffsetX, float fOffsetY) = 0;
+	virtual int BounceDeathAction() = 0;
 };
 
 class cDummy : public cPhysicsObject
@@ -99,6 +100,11 @@ public:
 		// atan2f() : Angle object is rotated
 		// radius : Scales object's size
 		// olc::WHITE : Makes characters white
+	}
+
+	virtual int BounceDeathAction()
+	{
+		return 0;		// Does nothing, just fades away
 	}
 
 private:
@@ -136,6 +142,11 @@ public:
 		DrawWireFrameModel(engine, vecModel, px - fOffsetX, py - fOffsetY, atan2f(vy, vx), radius, olc::DARK_GREEN);
 	}
 
+	virtual int BounceDeathAction()
+	{
+		return 0;		// Does nothing, just fades away
+	}
+
 private:
 	static vector<pair<float, float>> vecModel;
 };
@@ -150,7 +161,61 @@ vector<pair<float, float>> DefineDebris()
 	vecModel.push_back({ 0.0f, 1.0f });
 	return vecModel;
 }
+
 vector<pair<float, float>> cDebris::vecModel = DefineDebris();
+
+class cMissile : public cPhysicsObject // A projectile weapon
+{
+public:
+	cMissile(float x = 0.0f, float y = 0.0f, float _vx = 0.0f, float _vy = 0.0f) : cPhysicsObject(x, y)
+	{
+		radius = 2.5f;
+		fFriction = 0.5f;
+		vx = _vx;
+		vy = _vy;
+		bDead = false;
+		nBounceBeforeDeath = 1;
+	}
+
+	virtual void Draw(olc::PixelGameEngine* engine, float fOffsetX, float fOffsetY)
+	{
+		DrawWireFrameModel(engine, vecModel, px - fOffsetX, py - fOffsetY, atan2f(vy, vx), radius, olc::YELLOW);
+	}
+
+	virtual int BounceDeathAction()
+	{
+		return 20;		// Gives the Boom function a radius of 20 to make big explosions
+	}
+
+private:
+	static vector<pair<float, float>> vecModel;
+};
+
+vector<pair<float, float>> DefineMissile()
+{
+	// Defines a rocket like shape
+	vector<pair<float, float>> vecModel;
+	vecModel.push_back({ 0.0f, 0.0f });
+	vecModel.push_back({ 1.0f, 1.0f });
+	vecModel.push_back({ 2.0f, 1.0f });
+	vecModel.push_back({ 2.5f, 0.0f });
+	vecModel.push_back({ 2.0f, -1.0f });
+	vecModel.push_back({ 1.0f, -1.0f });
+	vecModel.push_back({ 0.0f, 0.0f });
+	vecModel.push_back({ -1.0f, -1.0f });
+	vecModel.push_back({ -2.5f, -1.0f });
+	vecModel.push_back({ -2.0f, 0.0f });
+	vecModel.push_back({ -2.5f, 1.0f });
+	vecModel.push_back({ -1.0f, 1.0f });
+	
+	for (auto& v : vecModel)		// Scales points to make the shape unit sized
+	{
+		v.first /= 2.5f;
+		v.second /= 2.5f;
+	}
+	return vecModel;
+}
+vector<pair<float, float>> cMissile::vecModel = DefineMissile();
 
 class Worms : public olc::PixelGameEngine
 {
@@ -189,6 +254,9 @@ private:
 
 		if (GetMouse(0).bReleased)		// Lanches debris wherever the left mouse button is released
 			Boom(GetMouseX() + fCameraPosX, GetMouseY() + fCameraPosY, 10.0f);
+		
+		if (GetMouse(1).bReleased)		// Drops a missile wherever the right mouse button is released
+			listObjects.push_back(unique_ptr<cMissile>(new cMissile(GetMouseX() + fCameraPosX, GetMouseY() + fCameraPosY)));
 
 		if (GetMouse(2).bReleased)		// Creates a dummy object wherever the middle mouse button is released
 		{
@@ -287,6 +355,14 @@ private:
 						{
 							p->nBounceBeforeDeath--;
 							p->bDead = p->nBounceBeforeDeath == 0;
+
+							if (p->bDead)		// Action upon an objects death; If greater than 0 creates an explosion
+							{
+								int nResponse = p->BounceDeathAction();
+								if (nResponse > 0)
+									Boom(p->px, p->py, nResponse);
+							}
+
 						}
 					}
 					else		// Else allow it to use the new potential positions
