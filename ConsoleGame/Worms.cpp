@@ -267,6 +267,8 @@ private:
 
 	list<unique_ptr<cPhysicsObject>> listObjects;		// Allows multiple types of objects in list; the list of objects in game
 
+	cPhysicsObject* pObjectUnderControl = nullptr;		// Pointer for object under control; Directs user input towards an onject
+
 	virtual bool OnUserCreate()		// Creates the map
 	{
 		map = new unsigned char[nMapWidth * nMapHeight];		// Allocate memory for 2D array
@@ -288,7 +290,11 @@ private:
 			listObjects.push_back(unique_ptr<cMissile>(new cMissile(GetMouseX() + fCameraPosX, GetMouseY() + fCameraPosY)));
 
 		if (GetMouse(2).bReleased)		// Creates a Worm/unit object wherever the middle mouse button is released
-			listObjects.push_back(unique_ptr<cWorm>(new cWorm(GetMouseX() + fCameraPosX, GetMouseY() + fCameraPosY)));
+		{
+			cWorm* worm = new cWorm(GetMouseX() + fCameraPosX, GetMouseY() + fCameraPosY);
+			pObjectUnderControl = worm;
+			listObjects.push_back(unique_ptr<cWorm>(worm));
+		}
 
 		// Controller camera for mouse edge map scrolling
 		float fMapScrollSpeed = 400.0f;
@@ -300,6 +306,27 @@ private:
 			fCameraPosY -= fMapScrollSpeed * fElapsedTime;
 		if (GetMouseY() > ScreenWidth() - 5)
 			fCameraPosY += fMapScrollSpeed * fElapsedTime;
+
+		// Handles user input
+		if (pObjectUnderControl != nullptr)		// If not null, then pointing to a worm
+		{
+			if (pObjectUnderControl->bStable)		// Ensures user input applies only when object is stable
+			{
+				if (GetKey(olc::Key::Z).bPressed)		// Makes worm jump to the left
+				{
+					pObjectUnderControl->vx = -4.0f;
+					pObjectUnderControl->vy = -8.0f;
+					pObjectUnderControl->bStable = false;
+				}
+
+				if (GetKey(olc::Key::X).bPressed)		// Makes worm jump to the right
+				{
+					pObjectUnderControl->vx = +4.0f;
+					pObjectUnderControl->vy = -8.0f;
+					pObjectUnderControl->bStable = false;
+				}
+			}
+		}
 
 		// Clamp map boundaries to keep camera in bounds
 		if (fCameraPosX < 0)
