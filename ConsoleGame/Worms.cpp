@@ -241,6 +241,8 @@ public:
 		return 0;		// Nothing
 	}
 
+	float fShootAngle = 0.0f;
+
 private:
 	static olc::Sprite* sprWorm;
 };
@@ -312,18 +314,36 @@ private:
 		{
 			if (pObjectUnderControl->bStable)		// Ensures user input applies only when object is stable
 			{
-				if (GetKey(olc::Key::Z).bPressed)		// Makes worm jump to the left
+				if (GetKey(olc::Key::Z).bPressed)		// When 'Z' is pressed, worm jumps to the left
 				{
 					pObjectUnderControl->vx = -4.0f;
 					pObjectUnderControl->vy = -8.0f;
 					pObjectUnderControl->bStable = false;
 				}
 
-				if (GetKey(olc::Key::X).bPressed)		// Makes worm jump to the right
+				if (GetKey(olc::Key::X).bPressed)		// When 'X' is pressed, worm jumps to the right
 				{
 					pObjectUnderControl->vx = +4.0f;
 					pObjectUnderControl->vy = -8.0f;
 					pObjectUnderControl->bStable = false;
+				}
+
+				if (GetKey(olc::Key::A).bHeld)		// When 'A' is held, curser turns counter clockwise
+				{
+					cWorm* worm = (cWorm*)pObjectUnderControl;
+					worm->fShootAngle -= 1.0f * fElapsedTime;
+
+					if (worm->fShootAngle < -3.14159f)		// If below -pi, wraps around back to pi
+						worm->fShootAngle += 3.14159f * 2.0f;
+				}
+
+				if (GetKey(olc::Key::S).bHeld)		// When 'S' is held, curser turns clockwise
+				{
+					cWorm* worm = (cWorm*)pObjectUnderControl;
+					worm->fShootAngle += 1.0f * fElapsedTime;
+
+					if (worm->fShootAngle > 3.14159f)		// If above pi, wraps around back to -pi
+						worm->fShootAngle -= 3.14159f * 2.0f;
 				}
 			}
 		}
@@ -448,7 +468,24 @@ private:
 			}
 		
 		for (auto& p : listObjects)		// Draws Objects
+		{
 			p->Draw(this, fCameraPosX, fCameraPosY);
+			cWorm* worm = (cWorm*)pObjectUnderControl;
+
+			if (p.get() == worm)		// If object is current worm under control, draw cursor
+			{
+				// Finds centerpoint of crosshair
+				float cx = worm->px + 8.0f * cosf(worm->fShootAngle) - fCameraPosX;
+				float cy = worm->py + 8.0f * sinf(worm->fShootAngle) - fCameraPosY;
+
+				// Draws a '+' symbol for the cursor
+				Draw(cx, cy, olc::BLACK);
+				Draw(cx + 1, cy, olc::BLACK);
+				Draw(cx - 1, cy, olc::BLACK);
+				Draw(cx, cy + 1, olc::BLACK);
+				Draw(cx, cy - 1, olc::BLACK);
+			}
+		}
 
 		return true;
 	}
