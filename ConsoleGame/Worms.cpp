@@ -314,17 +314,11 @@ private:
 		{
 			if (pObjectUnderControl->bStable)		// Ensures user input applies only when object is stable
 			{
-				if (GetKey(olc::Key::Z).bPressed)		// When 'Z' is pressed, worm jumps to the left
+				if (GetKey(olc::Key::Z).bPressed)		// When 'Z' is pressed, worm jumps in the aimed direction
 				{
-					pObjectUnderControl->vx = -4.0f;
-					pObjectUnderControl->vy = -8.0f;
-					pObjectUnderControl->bStable = false;
-				}
-
-				if (GetKey(olc::Key::X).bPressed)		// When 'X' is pressed, worm jumps to the right
-				{
-					pObjectUnderControl->vx = +4.0f;
-					pObjectUnderControl->vy = -8.0f;
+					float a = ((cWorm*)pObjectUnderControl)->fShootAngle;
+					pObjectUnderControl->vx = 4.0f * cosf(a);
+					pObjectUnderControl->vy = 8.0f * sinf(a);
 					pObjectUnderControl->bStable = false;
 				}
 
