@@ -272,6 +272,10 @@ private:
 	cPhysicsObject* pObjectUnderControl = nullptr;		// Pointer for object under control; Directs user input towards an onject
 	cPhysicsObject* pCameraTrackingObject = nullptr;	// Pointer for object the camera should be following
 
+	bool bEnergising = false;		// Indicates if user is charging up a shot
+	float fEnergyLevel = 0.0f;		// Amount that's been charged so far
+	bool bFireWeapon = false;		// Trigger that handles firing of weapon
+
 	virtual bool OnUserCreate()		// Creates the map
 	{
 		map = new unsigned char[nMapWidth * nMapHeight];		// Allocate memory for 2D array
@@ -341,6 +345,57 @@ private:
 					if (worm->fShootAngle > 3.14159f)		// If above pi, wraps around back to -pi
 						worm->fShootAngle -= 3.14159f * 2.0f;
 				}
+
+				if (GetKey(olc::Key::SPACE).bPressed)		// When spacebar is pressed, start charging weapon
+				{
+					bEnergising = true;
+					bFireWeapon = false;
+					fEnergyLevel = 0.0f;
+				}
+
+				if (GetKey(olc::Key::SPACE).bHeld)		// When spacebar is being held down, increse weapon charge
+				{
+					if (bEnergising)
+					{
+						fEnergyLevel += 0.75f * fElapsedTime;
+						if (fEnergyLevel >= 1.0f)		// If energy level reaches max, fire weapon
+						{
+							fEnergyLevel = 1.0f;
+							bFireWeapon = true;
+						}
+					}
+				}
+
+				if (GetKey(olc::Key::SPACE).bReleased)		// When spacebar is released, fire weapon
+				{
+					if (bEnergising)		// While being charged up, as soon as released, weapon fires
+						bFireWeapon = true;
+
+					bEnergising = true;
+				}
+			}
+
+			if (bFireWeapon)
+			{
+				cWorm* worm = (cWorm*)pObjectUnderControl;
+
+				// Gets weapon origin
+				float ox = worm->px;
+				float oy = worm->py;
+
+				// Gets weapon direction
+				float dx = cosf(worm->fShootAngle);
+				float dy = sinf(worm->fShootAngle);
+
+				// Creates weapon object and adds it to the object list
+				cMissile *m = new cMissile(ox, oy, dx * 40.0f * fEnergyLevel, dy * 40.0f * fEnergyLevel);
+				listObjects.push_back(unique_ptr<cMissile>(m));
+
+
+				// Resets all weapon states
+				bFireWeapon = false;
+				fEnergyLevel = 0.0f;
+				bEnergising = false;
 			}
 		}
 
@@ -487,6 +542,12 @@ private:
 				Draw(cx - 1, cy, olc::BLACK);
 				Draw(cx, cy + 1, olc::BLACK);
 				Draw(cx, cy - 1, olc::BLACK);
+
+				for (int i = 0; i < 11 * fEnergyLevel; i++)		// Draws an energy bar, indicating how much energy the weapon will be fired with
+				{
+					Draw(worm->px - 5 + i - fCameraPosX, worm->py - 12 - fCameraPosY, olc::GREEN);
+					Draw(worm->px - 5 + i - fCameraPosX, worm->py - 11 - fCameraPosY, olc::RED);
+				}
 			}
 		}
 
