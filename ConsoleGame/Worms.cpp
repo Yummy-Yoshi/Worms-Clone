@@ -270,6 +270,7 @@ private:
 	list<unique_ptr<cPhysicsObject>> listObjects;		// Allows multiple types of objects in list; the list of objects in game
 
 	cPhysicsObject* pObjectUnderControl = nullptr;		// Pointer for object under control; Directs user input towards an onject
+	cPhysicsObject* pCameraTrackingObject = nullptr;	// Pointer for object the camera should be following
 
 	virtual bool OnUserCreate()		// Creates the map
 	{
@@ -295,6 +296,7 @@ private:
 		{
 			cWorm* worm = new cWorm(GetMouseX() + fCameraPosX, GetMouseY() + fCameraPosY);
 			pObjectUnderControl = worm;
+			pCameraTrackingObject = worm;
 			listObjects.push_back(unique_ptr<cWorm>(worm));
 		}
 
@@ -340,6 +342,13 @@ private:
 						worm->fShootAngle -= 3.14159f * 2.0f;
 				}
 			}
+		}
+
+		if (pCameraTrackingObject != nullptr)		// Move camera automatically if tracking object isn't null
+		{
+			// Ensures object is displayed in middle of screen
+			fCameraPosX = pCameraTrackingObject->px - ScreenWidth() / 2;
+			fCameraPosY = pCameraTrackingObject->py - ScreenHeight() / 2;
 		}
 
 		// Clamp map boundaries to keep camera in bounds
