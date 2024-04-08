@@ -266,6 +266,9 @@ private:
 	// For camera control
 	float fCameraPosX = 0.0f;
 	float fCameraPosY = 0.0f;
+	float fCameraPosXTarget = 0.0f;
+	float fCameraPosYTarget = 0.0f;
+
 
 	list<unique_ptr<cPhysicsObject>> listObjects;		// Allows multiple types of objects in list; the list of objects in game
 
@@ -402,9 +405,11 @@ private:
 
 		if (pCameraTrackingObject != nullptr)		// Move camera automatically if tracking object isn't null
 		{
-			// Ensures object is displayed in middle of screen
-			fCameraPosX = pCameraTrackingObject->px - ScreenWidth() / 2;
-			fCameraPosY = pCameraTrackingObject->py - ScreenHeight() / 2;
+			// Makes camera's current position slowly inerpolate between current and target position
+			fCameraPosXTarget = pCameraTrackingObject->px - ScreenWidth() / 2;
+			fCameraPosYTarget = pCameraTrackingObject->py - ScreenHeight() / 2;
+			fCameraPosX += (fCameraPosXTarget - fCameraPosX) * 5.0f * fElapsedTime;
+			fCameraPosY += (fCameraPosYTarget - fCameraPosY) * 5.0f * fElapsedTime;
 		}
 
 		// Clamp map boundaries to keep camera in bounds
