@@ -390,6 +390,7 @@ private:
 				// Creates weapon object and adds it to the object list
 				cMissile *m = new cMissile(ox, oy, dx * 40.0f * fEnergyLevel, dy * 40.0f * fEnergyLevel);
 				listObjects.push_back(unique_ptr<cMissile>(m));
+				pCameraTrackingObject = m;		// Makes camera track missile
 
 
 				// Resets all weapon states
@@ -490,7 +491,10 @@ private:
 							{
 								int nResponse = p->BounceDeathAction();
 								if (nResponse > 0)
+								{
 									Boom(p->px, p->py, nResponse);
+									pCameraTrackingObject = pObjectUnderControl;		// After explosion, camera goes back to player
+								}
 							}
 
 						}
