@@ -14,6 +14,12 @@ in C++.
 
 This project aims to further develop and demonstrate my skills in C++ and Object-Oriented Programming.
 
+## Run Locally
+Clone the project
+```bash
+  git clone https://github.com/Yummy-Yoshi/Worms-Clone
+```
+Using Microsoft Visual Studio, run the project using the Local Windows Debugger
 
 ## Acknowledgements
 This project leverages Javidx9's Pixel Game Engine and implements concepts learned from his guides.
