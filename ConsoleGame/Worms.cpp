@@ -269,6 +269,20 @@ private:
 	float fCameraPosXTarget = 0.0f;
 	float fCameraPosYTarget = 0.0f;
 
+	enum GAME_STATE		// State machine for game events
+	{
+		GS_RESET = 0,
+		GS_GENERATE_TERRAIN = 1,
+		GS_GENERATING_TERRAIN,
+		GS_ALLOCATE_UNITS,
+		GS_ALLOCATING_UNITS,
+		GS_START_PLAY,
+		GS_CAMERA_MODE
+	} nGameState, nNextState;
+
+	bool bGameIsStable = false;		// Represents overall stablity of game
+	bool bPlayerHasControl = false;		// Represents whether player has control over character
+	bool bPlayerActionComplete = false;		// Represents whether player has finished an action
 
 	list<unique_ptr<cPhysicsObject>> listObjects;		// Allows multiple types of objects in list; the list of objects in game
 
@@ -283,7 +297,10 @@ private:
 	{
 		map = new unsigned char[nMapWidth * nMapHeight];		// Allocate memory for 2D array
 		memset(map, 0, nMapWidth * nMapHeight * sizeof(unsigned char));		// Clear all to 0
-		CreateMap();
+
+		// State machine creates map
+		nGameState = GS_RESET;
+		nNextState = GS_RESET;
 
 		return true;
 	}
@@ -318,88 +335,164 @@ private:
 		if (GetMouseY() > ScreenWidth() - 5)
 			fCameraPosY += fMapScrollSpeed * fElapsedTime;
 
-		// Handles user input
-		if (pObjectUnderControl != nullptr)		// If not null, then pointing to a worm
+		// Control supervisor
+		switch (nGameState)
 		{
-			if (pObjectUnderControl->bStable)		// Ensures user input applies only when object is stable
+		case GS_RESET:		// Sets game variables to know state
+		{
+			bPlayerHasControl = false;
+			nNextState = GS_GENERATE_TERRAIN;
+		}
+		break;
+
+		case GS_GENERATE_TERRAIN:		// Creates a new terrain
+		{
+			bPlayerHasControl = false;
+			CreateMap();
+			nNextState = GS_GENERATING_TERRAIN;
+		}
+		break;
+
+		case GS_GENERATING_TERRAIN:		// Does nothing, for now
+		{
+			bPlayerHasControl = false;
+			nNextState = GS_ALLOCATE_UNITS;
+		}
+		break;
+
+		case GS_ALLOCATE_UNITS:		// Adds a unit to the top of the screen
+		{
+			bPlayerHasControl = false;
+			cWorm* worm = new cWorm(32.0f, 1.0f);
+			listObjects.push_back(unique_ptr<cWorm>(worm));
+			pObjectUnderControl = worm;
+			pCameraTrackingObject = pObjectUnderControl;
+			nNextState = GS_ALLOCATING_UNITS;
+		}
+		break;
+
+		case GS_ALLOCATING_UNITS:		// Stays in this state while units are deploying
+		{
+			bPlayerHasControl = false;
+
+			if (bGameIsStable)
 			{
-				if (GetKey(olc::Key::Z).bPressed)		// When 'Z' is pressed, worm jumps in the aimed direction
+				bPlayerActionComplete = false;
+				nNextState = GS_START_PLAY;
+			}
+		}
+		break;
+
+		case GS_START_PLAY:		// Player is in control of unit
+		{
+			bPlayerHasControl = true;
+
+			if (bPlayerActionComplete)
+				nNextState = GS_CAMERA_MODE;
+		}
+		break;
+
+		case GS_CAMERA_MODE:		// Camera is tracking on-screen action
+		{
+			bPlayerHasControl = false;
+			bPlayerActionComplete = false;
+
+			if (bGameIsStable)
+			{
+				pCameraTrackingObject = pObjectUnderControl;
+				nNextState = GS_START_PLAY;
+			}
+		}
+		break;
+		}
+
+		// Handles user input
+		if (bPlayerHasControl)
+		{
+			if (pObjectUnderControl != nullptr)		// If not null, then pointing to a worm
+			{
+				if (pObjectUnderControl->bStable)		// Ensures user input applies only when object is stable
 				{
-					float a = ((cWorm*)pObjectUnderControl)->fShootAngle;
-					pObjectUnderControl->vx = 4.0f * cosf(a);
-					pObjectUnderControl->vy = 8.0f * sinf(a);
-					pObjectUnderControl->bStable = false;
-				}
-
-				if (GetKey(olc::Key::A).bHeld)		// When 'A' is held, curser turns counter clockwise
-				{
-					cWorm* worm = (cWorm*)pObjectUnderControl;
-					worm->fShootAngle -= 1.0f * fElapsedTime;
-
-					if (worm->fShootAngle < -3.14159f)		// If below -pi, wraps around back to pi
-						worm->fShootAngle += 3.14159f * 2.0f;
-				}
-
-				if (GetKey(olc::Key::S).bHeld)		// When 'S' is held, curser turns clockwise
-				{
-					cWorm* worm = (cWorm*)pObjectUnderControl;
-					worm->fShootAngle += 1.0f * fElapsedTime;
-
-					if (worm->fShootAngle > 3.14159f)		// If above pi, wraps around back to -pi
-						worm->fShootAngle -= 3.14159f * 2.0f;
-				}
-
-				if (GetKey(olc::Key::SPACE).bPressed)		// When spacebar is pressed, start charging weapon
-				{
-					bEnergising = true;
-					bFireWeapon = false;
-					fEnergyLevel = 0.0f;
-				}
-
-				if (GetKey(olc::Key::SPACE).bHeld)		// When spacebar is being held down, increse weapon charge
-				{
-					if (bEnergising)
+					if (GetKey(olc::Key::Z).bPressed)		// When 'Z' is pressed, worm jumps in the aimed direction
 					{
-						fEnergyLevel += 0.75f * fElapsedTime;
-						if (fEnergyLevel >= 1.0f)		// If energy level reaches max, fire weapon
+						float a = ((cWorm*)pObjectUnderControl)->fShootAngle;
+						pObjectUnderControl->vx = 4.0f * cosf(a);
+						pObjectUnderControl->vy = 8.0f * sinf(a);
+						pObjectUnderControl->bStable = false;
+					}
+
+					if (GetKey(olc::Key::A).bHeld)		// When 'A' is held, curser turns counter clockwise
+					{
+						cWorm* worm = (cWorm*)pObjectUnderControl;
+						worm->fShootAngle -= 1.0f * fElapsedTime;
+
+						if (worm->fShootAngle < -3.14159f)		// If below -pi, wraps around back to pi
+							worm->fShootAngle += 3.14159f * 2.0f;
+					}
+
+					if (GetKey(olc::Key::S).bHeld)		// When 'S' is held, curser turns clockwise
+					{
+						cWorm* worm = (cWorm*)pObjectUnderControl;
+						worm->fShootAngle += 1.0f * fElapsedTime;
+
+						if (worm->fShootAngle > 3.14159f)		// If above pi, wraps around back to -pi
+							worm->fShootAngle -= 3.14159f * 2.0f;
+					}
+
+					if (GetKey(olc::Key::SPACE).bPressed)		// When spacebar is pressed, start charging weapon
+					{
+						bEnergising = true;
+						bFireWeapon = false;
+						fEnergyLevel = 0.0f;
+					}
+
+					if (GetKey(olc::Key::SPACE).bHeld)		// When spacebar is being held down, increse weapon charge
+					{
+						if (bEnergising)
 						{
-							fEnergyLevel = 1.0f;
-							bFireWeapon = true;
+							fEnergyLevel += 0.75f * fElapsedTime;
+							if (fEnergyLevel >= 1.0f)		// If energy level reaches max, fire weapon
+							{
+								fEnergyLevel = 1.0f;
+								bFireWeapon = true;
+							}
 						}
+					}
+
+					if (GetKey(olc::Key::SPACE).bReleased)		// When spacebar is released, fire weapon
+					{
+						if (bEnergising)		// While being charged up, as soon as released, weapon fires
+							bFireWeapon = true;
+
+						bEnergising = true;
 					}
 				}
 
-				if (GetKey(olc::Key::SPACE).bReleased)		// When spacebar is released, fire weapon
+				if (bFireWeapon)
 				{
-					if (bEnergising)		// While being charged up, as soon as released, weapon fires
-						bFireWeapon = true;
+					cWorm* worm = (cWorm*)pObjectUnderControl;
 
-					bEnergising = true;
+					// Gets weapon origin
+					float ox = worm->px;
+					float oy = worm->py;
+
+					// Gets weapon direction
+					float dx = cosf(worm->fShootAngle);
+					float dy = sinf(worm->fShootAngle);
+
+					// Creates weapon object and adds it to the object list
+					cMissile* m = new cMissile(ox, oy, dx * 40.0f * fEnergyLevel, dy * 40.0f * fEnergyLevel);
+					listObjects.push_back(unique_ptr<cMissile>(m));
+					pCameraTrackingObject = m;		// Makes camera track missile
+
+
+					// Resets all weapon states
+					bFireWeapon = false;
+					fEnergyLevel = 0.0f;
+					bEnergising = false;
+
+					bPlayerActionComplete = true;
 				}
-			}
-
-			if (bFireWeapon)
-			{
-				cWorm* worm = (cWorm*)pObjectUnderControl;
-
-				// Gets weapon origin
-				float ox = worm->px;
-				float oy = worm->py;
-
-				// Gets weapon direction
-				float dx = cosf(worm->fShootAngle);
-				float dy = sinf(worm->fShootAngle);
-
-				// Creates weapon object and adds it to the object list
-				cMissile *m = new cMissile(ox, oy, dx * 40.0f * fEnergyLevel, dy * 40.0f * fEnergyLevel);
-				listObjects.push_back(unique_ptr<cMissile>(m));
-				pCameraTrackingObject = m;		// Makes camera track missile
-
-
-				// Resets all weapon states
-				bFireWeapon = false;
-				fEnergyLevel = 0.0f;
-				bEnergising = false;
 			}
 		}
 
@@ -498,7 +591,7 @@ private:
 								if (nResponse > 0)
 								{
 									Boom(p->px, p->py, nResponse);
-									pCameraTrackingObject = pObjectUnderControl;		// After explosion, camera goes back to player
+									pCameraTrackingObject = nullptr;		// After debris settles, camera goes back to player
 								}
 							}
 
@@ -559,6 +652,20 @@ private:
 				}
 			}
 		}
+
+		// Checks for game state stability
+		bGameIsStable = true;
+		for(auto &p : listObjects)		// Iterates through all objects and checks if stable
+			if (!p->bStable)
+			{
+				bGameIsStable = false;
+				break;
+			}
+
+		if (bGameIsStable)
+			FillRect(2, 2, 4, 4, olc::RED);
+
+		nGameState = nNextState;
 
 		return true;
 	}
