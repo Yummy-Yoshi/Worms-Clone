@@ -226,7 +226,7 @@ public:
 		nBounceBeforeDeath = -1;
 		
 		if (sprWorm == nullptr)		// Loads sprite data from sprite file
-			sprWorm = new olc::Sprite("Sprites/worms.png");
+			sprWorm = new olc::Sprite("Sprites/worms1.png");
 	}
 
 	virtual void Draw(olc::PixelGameEngine* engine, float fOffsetX, float fOffsetY, bool bPixel = false)

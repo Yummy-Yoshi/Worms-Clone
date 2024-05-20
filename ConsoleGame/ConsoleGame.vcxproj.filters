@@ -28,5 +28,8 @@
     <Image Include="Sprites\worms.png">
       <Filter>Resource Files</Filter>
     </Image>
+    <Image Include="Sprites\worms1.png">
+      <Filter>Resource Files</Filter>
+    </Image>
   </ItemGroup>
 </Project>
