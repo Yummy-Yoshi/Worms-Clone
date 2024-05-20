@@ -80,7 +80,7 @@ public:
 	}
 
 	// Makes the class abstract
-	virtual void Draw(olc::PixelGameEngine* engine, float fOffsetX, float fOffsetY) = 0;
+	virtual void Draw(olc::PixelGameEngine* engine, float fOffsetX, float fOffsetY, bool bPixel = false) = 0;
 	virtual int BounceDeathAction() = 0;
 };
 
@@ -136,9 +136,9 @@ public:
 		nBounceBeforeDeath = 5;		// Deletes after bouncing 5 times
 	}
 
-	virtual void Draw(olc::PixelGameEngine* engine, float fOffsetX, float fOffsetY)
+	virtual void Draw(olc::PixelGameEngine* engine, float fOffsetX, float fOffsetY, bool bPixel = false)
 	{
-		DrawWireFrameModel(engine, vecModel, px - fOffsetX, py - fOffsetY, atan2f(vy, vx), radius, olc::DARK_GREEN);
+		DrawWireFrameModel(engine, vecModel, px - fOffsetX, py - fOffsetY, atan2f(vy, vx), bPixel ? 0.5f : radius, olc::DARK_GREEN);
 	}
 
 	virtual int BounceDeathAction()
@@ -175,9 +175,9 @@ public:
 		nBounceBeforeDeath = 1;
 	}
 
-	virtual void Draw(olc::PixelGameEngine* engine, float fOffsetX, float fOffsetY)
+	virtual void Draw(olc::PixelGameEngine* engine, float fOffsetX, float fOffsetY, bool bPixel = false)
 	{
-		DrawWireFrameModel(engine, vecModel, px - fOffsetX, py - fOffsetY, atan2f(vy, vx), radius, olc::YELLOW);
+		DrawWireFrameModel(engine, vecModel, px - fOffsetX, py - fOffsetY, atan2f(vy, vx), bPixel ? 0.5f : radius, olc::BLACK);
 	}
 
 	virtual int BounceDeathAction()
@@ -229,11 +229,26 @@ public:
 			sprWorm = new olc::Sprite("Sprites/worms.png");
 	}
 
-	virtual void Draw(olc::PixelGameEngine* engine, float fOffsetX, float fOffsetY)
+	virtual void Draw(olc::PixelGameEngine* engine, float fOffsetX, float fOffsetY, bool bPixel = false)
 	{
-		engine->SetPixelMode(olc::Pixel::Mode::MASK);
-		engine->DrawPartialSprite(px - fOffsetX - radius, py - fOffsetY - radius, sprWorm, 0, 0, 8, 8);
-		engine->SetPixelMode(olc::Pixel::Mode::NORMAL);
+		engine->SetPixelMode(olc::Pixel::MASK);
+
+		if (bIsPlayable)		// Draws Worm Sprite with health bar, in it's team's colors
+		{
+			engine->DrawPartialSprite(px - fOffsetX - radius, py - fOffsetY - radius, sprWorm, 0, 0, 8, 8);
+
+			for (int i = 0; i < 11 * fHealth; i++)		// Draws health bar for worm
+			{
+				engine->Draw(px - 5 + i - fOffsetX, py + 5 - fOffsetY, olc::BLUE);
+				engine->Draw(px - 5 + i - fOffsetX, py + 6 - fOffsetY, olc::BLUE);
+			}
+		}
+		else		// Draws tombstone sprite for team's color
+		{
+			engine->DrawPartialSprite(px - fOffsetX - radius, py - fOffsetY - radius, sprWorm, nTeam * 8, 8, 8, 8);
+		}
+
+		engine->SetPixelMode(olc::Pixel::NORMAL);
 	}
 
 	virtual int BounceDeathAction()
@@ -243,11 +258,43 @@ public:
 
 	float fShootAngle = 0.0f;
 
+public:
+	float fHealth = 1.0f;
+	bool bIsPlayable = true;
+	int nTeam = 0;		// The ID of which team this worm belongs to
+
 private:
 	static olc::Sprite* sprWorm;
 };
 
 olc::Sprite* cWorm::sprWorm = nullptr;
+
+class cTeam		// Defines agroup of worms
+{
+public:
+	vector<cWorm*> vecMembers;
+	int nCurrentMember = 0;			// Index into vector for current worms turn
+	int nTeamSize = 0;		// Total number of worms in team
+
+	bool IsTeamAlive()		// Iterates though all team members, if any of them have >0 health, return true
+	{
+		bool bAllDead = false;
+		for (auto w : vecMembers)
+			bAllDead |= (w->fHealth > 0.0f);
+		return bAllDead;
+	}
+
+	cWorm* GetNextMember()		// Returns a pointer to the next team member that is valid for control
+	{
+		do {
+			nCurrentMember++;
+			if (nCurrentMember >= nTeamSize)
+				nCurrentMember = 0;
+		} while (vecMembers[nCurrentMember]->fHealth <= 0);
+		
+		return vecMembers[nCurrentMember];
+	}
+};
 
 class Worms : public olc::PixelGameEngine
 {
@@ -277,7 +324,8 @@ private:
 		GS_ALLOCATE_UNITS,
 		GS_ALLOCATING_UNITS,
 		GS_START_PLAY,
-		GS_CAMERA_MODE
+		GS_CAMERA_MODE,
+		GS_GAME_OVER1
 	} nGameState, nNextState;
 
 	bool bGameIsStable = false;		// Represents overall stablity of game
@@ -292,6 +340,18 @@ private:
 	bool bEnergising = false;		// Indicates if user is charging up a shot
 	float fEnergyLevel = 0.0f;		// Amount that's been charged so far
 	bool bFireWeapon = false;		// Trigger that handles firing of weapon
+
+	float fTurnTime = 0.0f;		// Time left to take your turn
+	bool bZoomOut = false;		// Renders the whole map
+	bool bEnablePlayerControl = true;		// The player is in control, keyboard input enabled
+	bool bEnableComputerControl = false;		// The AI is in control
+	bool bPlayerHasFired = false;		// Weapon has been fired
+	bool bShowCountDown = false;		// Displays turn time counter on screen
+
+	vector<cTeam> vecTeams;		// Vector to store teams
+
+	// Current team being controlled
+	int nCurrentTeam = 0;
 
 	virtual bool OnUserCreate()		// Creates the map
 	{
@@ -362,11 +422,38 @@ private:
 
 		case GS_ALLOCATE_UNITS:		// Adds a unit to the top of the screen
 		{
-			bPlayerHasControl = false;
-			cWorm* worm = new cWorm(32.0f, 1.0f);
-			listObjects.push_back(unique_ptr<cWorm>(worm));
-			pObjectUnderControl = worm;
+			// Deploys teams
+			int nTeams = 4;
+			int nWormsPerTeam = 4;
+
+			// Calculates the spacing of worms and teams
+			float fSpacePerTeam = (float)nMapWidth / (float)nTeams;
+			float fSpacePerWorm = fSpacePerTeam / (nWormsPerTeam * 2.0f);
+
+			for (int t = 0; t < nTeams; t++)		// Creates teams
+			{
+				vecTeams.emplace_back(cTeam());
+				float fTeamMiddle = (fSpacePerTeam / 2.0f) + (t * fSpacePerTeam);
+				for (int w = 0; w < nWormsPerTeam; w++)
+				{
+					float fWormX = fTeamMiddle - ((fSpacePerWorm * (float)nWormsPerTeam) / 2.0f) + w * fSpacePerWorm;
+					float fWormY = 0.0f;
+
+					// Add worms to teams
+					cWorm* worm = new cWorm(fWormX, fWormY);
+					worm->nTeam = t;
+					listObjects.push_back(unique_ptr<cWorm>(worm));
+					vecTeams[t].vecMembers.push_back(worm);
+					vecTeams[t].nTeamSize = nWormsPerTeam;
+				}
+
+				vecTeams[t].nCurrentMember = 0;
+			}
+
+			// Selects players first worm for control and camera tracking
+			pObjectUnderControl = vecTeams[0].vecMembers[vecTeams[0].nCurrentMember];
 			pCameraTrackingObject = pObjectUnderControl;
+			bShowCountDown = false;
 			nNextState = GS_ALLOCATING_UNITS;
 		}
 		break;
@@ -387,28 +474,66 @@ private:
 		{
 			bPlayerHasControl = true;
 
-			if (bPlayerActionComplete)
+			if (bPlayerHasFired || fTurnTime <= 0.0f)		// If player has fired weapon, or turn time is up, move on to the next state 
 				nNextState = GS_CAMERA_MODE;
 		}
 		break;
 
-		case GS_CAMERA_MODE:		// Camera is tracking on-screen action
+		case GS_CAMERA_MODE:		// Camera follows the object of interest until the physics engine has settled
 		{
-			bPlayerHasControl = false;
-			bPlayerActionComplete = false;
+			bEnableComputerControl = false;
+			bEnablePlayerControl = false;
+			bPlayerHasFired = false;
+			bShowCountDown = false;
+			fEnergyLevel = 0.0f;
 
-			if (bGameIsStable)
+			if (bGameIsStable)		// Once settled, chooses the next worm
 			{
+				// Gets next team, if there is no next team, game is over
+				int nOldTeam = nCurrentTeam;
+				do {
+					nCurrentTeam++;
+					nCurrentTeam %= vecTeams.size();
+				} while (!vecTeams[nCurrentTeam].IsTeamAlive());
+
+				// Locks controls if AI team is currently playing
+				if (nCurrentTeam == 0)		// The Player Team
+				{
+					bEnablePlayerControl = true;		// Swap these around for a complete AI battle
+					bEnableComputerControl = false;
+				}
+				else		// The AI Team
+				{
+					bEnablePlayerControl = false;
+					bEnableComputerControl = true;
+				}
+
+				// Sets control and camera
+				pObjectUnderControl = vecTeams[nCurrentTeam].GetNextMember();
 				pCameraTrackingObject = pObjectUnderControl;
+				fTurnTime = 15.0f;
+				bZoomOut = false;
 				nNextState = GS_START_PLAY;
+
+				if (nCurrentTeam == nOldTeam)		// If no different team could be found, game is over, current team wins
+					nNextState = GS_GAME_OVER1;
 			}
 		}
 		break;
+
+		case GS_GAME_OVER1:
+		{
+
+		}
+		break;
+
 		}
 
 		// Handles user input
 		if (bPlayerHasControl)
 		{
+			fTurnTime -= fElapsedTime;		// Decreases turn time
+
 			if (pObjectUnderControl != nullptr)		// If not null, then pointing to a worm
 			{
 				if (pObjectUnderControl->bStable)		// Ensures user input applies only when object is stable
@@ -613,44 +738,78 @@ private:
 		}
 
 		// Draws landscape terrain
-		for (int x = 0; x < ScreenWidth(); x++)		// Iterate through all pixels on screen
-			for (int y = 0; y < ScreenHeight(); y++)
-			{
-				switch (map[(y + (int)fCameraPosY) * nMapWidth + (x + (int)fCameraPosX)])		// Find location in map & color in for sky or terrain
-				{
-				case 0:
-					Draw(x, y, olc::CYAN);
-					break;
-				case 1:
-					Draw(x, y, olc::DARK_GREEN);
-					break;
-				}
-			}
-		
-		for (auto& p : listObjects)		// Draws Objects
+		if (!bZoomOut)
 		{
-			p->Draw(this, fCameraPosX, fCameraPosY);
-			cWorm* worm = (cWorm*)pObjectUnderControl;
-
-			if (p.get() == worm)		// If object is current worm under control, draw cursor
-			{
-				// Finds centerpoint of crosshair
-				float cx = worm->px + 8.0f * cosf(worm->fShootAngle) - fCameraPosX;
-				float cy = worm->py + 8.0f * sinf(worm->fShootAngle) - fCameraPosY;
-
-				// Draws a '+' symbol for the cursor
-				Draw(cx, cy, olc::BLACK);
-				Draw(cx + 1, cy, olc::BLACK);
-				Draw(cx - 1, cy, olc::BLACK);
-				Draw(cx, cy + 1, olc::BLACK);
-				Draw(cx, cy - 1, olc::BLACK);
-
-				for (int i = 0; i < 11 * fEnergyLevel; i++)		// Draws an energy bar, indicating how much energy the weapon will be fired with
+			for (int x = 0; x < ScreenWidth(); x++)		// Iterate through all pixels on screen
+				for (int y = 0; y < ScreenHeight(); y++)
 				{
-					Draw(worm->px - 5 + i - fCameraPosX, worm->py - 12 - fCameraPosY, olc::GREEN);
-					Draw(worm->px - 5 + i - fCameraPosX, worm->py - 11 - fCameraPosY, olc::RED);
+					switch (map[(y + (int)fCameraPosY) * nMapWidth + (x + (int)fCameraPosX)])		// Find location in map & color in for sky or terrain
+					{
+					case -8: Draw(x, y, olc::VERY_DARK_CYAN); break;		// Sky radiants
+					case -7: Draw(x, y, olc::DARK_CYAN); break;
+					case -6: Draw(x, y, olc::DARK_CYAN); break;
+					case -5: Draw(x, y, olc::BLUE); break;
+					case -4: Draw(x, y, olc::DARK_BLUE); break;
+					case -3: Draw(x, y, olc::DARK_BLUE); break;
+					case -2: Draw(x, y, olc::VERY_DARK_BLUE); break;
+					case -1: Draw(x, y, olc::VERY_DARK_BLUE); break;
+					case  0: Draw(x, y, olc::CYAN); break;		// Simple sky
+					case  1: Draw(x, y, olc::DARK_GREEN); break;		// Land
+					}
+				}
+
+			for (auto& p : listObjects)		// Draws Objects
+			{
+				p->Draw(this, fCameraPosX, fCameraPosY);
+				cWorm* worm = (cWorm*)pObjectUnderControl;
+
+				if (p.get() == worm)		// If object is current worm under control, draw cursor
+				{
+					// Finds centerpoint of crosshair
+					float cx = worm->px + 8.0f * cosf(worm->fShootAngle) - fCameraPosX;
+					float cy = worm->py + 8.0f * sinf(worm->fShootAngle) - fCameraPosY;
+
+					// Draws a '+' symbol for the cursor
+					Draw(cx, cy, olc::BLACK);
+					Draw(cx + 1, cy, olc::BLACK);
+					Draw(cx - 1, cy, olc::BLACK);
+					Draw(cx, cy + 1, olc::BLACK);
+					Draw(cx, cy - 1, olc::BLACK);
+
+					for (int i = 0; i < 11 * fEnergyLevel; i++)		// Draws an energy bar, indicating how much energy the weapon will be fired with
+					{
+						Draw(worm->px - 5 + i - fCameraPosX, worm->py - 12 - fCameraPosY, olc::GREEN);
+						Draw(worm->px - 5 + i - fCameraPosX, worm->py - 11 - fCameraPosY, olc::RED);
+					}
 				}
 			}
+		}
+		else
+		{
+			for (int x = 0; x < ScreenWidth(); x++)
+				for (int y = 0; y < ScreenHeight(); y++)
+				{
+					float fx = (float)x / (float)ScreenWidth() * (float)nMapWidth;
+					float fy = (float)y / (float)ScreenHeight() * (float)nMapHeight;
+
+					switch (map[(int)fy * nMapWidth + (int)fx])
+					{
+					case -8: Draw(x, y, olc::VERY_DARK_CYAN); break;		// Sky radiants
+					case -7: Draw(x, y, olc::DARK_CYAN); break;
+					case -6: Draw(x, y, olc::DARK_CYAN); break;
+					case -5: Draw(x, y, olc::BLUE); break;
+					case -4: Draw(x, y, olc::DARK_BLUE); break;
+					case -3: Draw(x, y, olc::DARK_BLUE); break;
+					case -2: Draw(x, y, olc::VERY_DARK_BLUE); break;
+					case -1: Draw(x, y, olc::VERY_DARK_BLUE); break;
+					case  0: Draw(x, y, olc::CYAN); break;		// Simple sky
+					case  1: Draw(x, y, olc::DARK_GREEN); break;		// Land
+					}
+				}
+
+			for (auto& p : listObjects)
+				p->Draw(this, p->px - (p->px / (float)nMapWidth) * (float)ScreenWidth(),
+					p->py - (p->py / (float)nMapHeight) * (float)ScreenHeight(), true);
 		}
 
 		// Checks for game state stability
@@ -662,12 +821,66 @@ private:
 				break;
 			}
 
+		/* Marker for debugging purposes		
 		if (bGameIsStable)
 			FillRect(2, 2, 4, 4, olc::RED);
+		*/
+		
+		for (size_t t = 0; t < vecTeams.size(); t++)		// Draws Team Health Bars
+		{
+			float fTotalHealth = 0.0f;
+			float fMaxHealth = (float)vecTeams[t].nTeamSize;
+			for (auto w : vecTeams[t].vecMembers)		// Accumulates team health
+				fTotalHealth += w->fHealth;
+
+			olc::Pixel cols[] = { olc::RED, olc::BLUE, olc::MAGENTA, olc::GREEN };
+			FillRect(4, 4 + t * 4, (fTotalHealth / fMaxHealth) * (float)(ScreenWidth() - 8), 3, cols[t]);
+		}
+
+		// Counts down using 7 segment display
+		if (bShowCountDown) {
+			int tx = 4;
+			int ty = vecTeams.size() * 4 + 8;
+			int nCountDown = round(fTurnTime);
+			if (nCountDown < 10) {
+				SevenSegmentDisplay(tx, ty, nCountDown, olc::DARK_GREY, 2);
+			}
+		}
 
 		nGameState = nNextState;
 
 		return true;
+	}
+
+	void SevenSegmentDisplay(int x, int y, int digit, olc::Pixel col = olc::WHITE, int scale = 1)
+	{
+		// Encodes which segment is active per digit
+		char segmentCode[10] = {
+			0b01110111,     // For digit '0' the segments 0, 1, 2, 4, 5, 6 are active
+			0b00100100,
+			0b01011101,
+			0b01101101,
+			0b00101110,
+			0b01101011,
+			0b01111011,
+			0b00100101,
+			0b01111111,
+			0b01101111,
+		};
+
+		// Checks if the bit at cByte[nIndex] is set
+		auto is_bit_active = [=](char cByte, int nIndex) -> bool {
+			return ((cByte >> nIndex) & 0x01) == 0x01;
+			};
+
+		// Draws the segments in a 8x8 grid
+		if (is_bit_active(segmentCode[digit], 0)) FillRect(x + (1 * scale), y, 4 * scale, 1 * scale, col);
+		if (is_bit_active(segmentCode[digit], 1)) FillRect(x, y + (1 * scale), 1 * scale, 3 * scale, col);
+		if (is_bit_active(segmentCode[digit], 2)) FillRect(x + (5 * scale), y + (1 * scale), 1 * scale, 3 * scale, col);
+		if (is_bit_active(segmentCode[digit], 3)) FillRect(x + (1 * scale), y + (4 * scale), 4 * scale, 1 * scale, col);
+		if (is_bit_active(segmentCode[digit], 4)) FillRect(x, y + (5 * scale), 1 * scale, 3 * scale, col);
+		if (is_bit_active(segmentCode[digit], 5)) FillRect(x + (5 * scale), y + (5 * scale), 1 * scale, 3 * scale, col);
+		if (is_bit_active(segmentCode[digit], 6)) FillRect(x + (1 * scale), y + (8 * scale), 4 * scale, 1 * scale, col);
 	}
 
 	void Boom(float fWorldX, float fWorldY, float fRadius)		// Launches debris
