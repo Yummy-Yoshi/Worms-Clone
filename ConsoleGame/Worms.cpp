@@ -21,28 +21,28 @@ void DrawWireFrameModel(olc::PixelGameEngine* engine, const vector<pair<float, f
 	int verts = vecModelCoordinates.size();		// Keep the model vector static
 	vecTransformedCoordinates.resize(verts);		// Create another vector the same size as the model vector
 
-	// Rotate
+	// Rotates
 	for (int i = 0; i < verts; i++)
 	{
 		vecTransformedCoordinates[i].first = vecModelCoordinates[i].first * cosf(r) - vecModelCoordinates[i].second * sinf(r);
 		vecTransformedCoordinates[i].second = vecModelCoordinates[i].first * sinf(r) + vecModelCoordinates[i].second * cosf(r);
 	}
 
-	// Scale
+	// Scales
 	for (int i = 0; i < verts; i++)
 	{
 		vecTransformedCoordinates[i].first = vecTransformedCoordinates[i].first * s;
 		vecTransformedCoordinates[i].second = vecTransformedCoordinates[i].second * s;
 	}
 
-	// Translate
+	// Translates
 	for (int i = 0; i < verts; i++)
 	{
 		vecTransformedCoordinates[i].first = vecTransformedCoordinates[i].first + x;
 		vecTransformedCoordinates[i].second = vecTransformedCoordinates[i].second + y;
 	}
 
-	// Draw closed polygon
+	// Draws closed polygon
 	for (int i = 0; i < verts + 1; i++)
 	{
 		int j = (i + 1);
@@ -82,6 +82,7 @@ public:
 	// Makes the class abstract
 	virtual void Draw(olc::PixelGameEngine* engine, float fOffsetX, float fOffsetY, bool bPixel = false) = 0;
 	virtual int BounceDeathAction() = 0;
+	virtual bool Damage(float d) = 0;
 };
 
 class cDummy : public cPhysicsObject		// Does nothing, shows a marker that helps with physics debug and test
@@ -111,6 +112,7 @@ private:
 	static vector<pair<float, float>> vecModel;		// Allows one model to be shared across all objects of the same class
 };
 
+/* Dummys for debugging purposes
 vector<pair<float, float>> DefineDummy()		// Creates a unit circle with a line fom center to edge
 {
 	vector<pair<float, float>> vecModel;
@@ -122,6 +124,7 @@ vector<pair<float, float>> DefineDummy()		// Creates a unit circle with a line f
 	return vecModel;
 }
 vector<pair<float, float>> cDummy::vecModel = DefineDummy();
+*/
 
 class cDebris : public cPhysicsObject // A small rock that bounces
 {
@@ -133,7 +136,9 @@ public:
 		vy = 10.0f * sinf(((float)rand() / (float)RAND_MAX) * 2.0f * 3.14159f);
 		radius = 1.0f;
 		fFriction = 0.8f;
-		nBounceBeforeDeath = 5;		// Deletes after bouncing 5 times
+		bDead = false;
+		bStable = false;
+		nBounceBeforeDeath = 2;		// Deletes after bouncing 2 times		
 	}
 
 	virtual void Draw(olc::PixelGameEngine* engine, float fOffsetX, float fOffsetY, bool bPixel = false)
@@ -144,6 +149,11 @@ public:
 	virtual int BounceDeathAction()
 	{
 		return 0;		// Does nothing, just fades away
+	}
+
+	virtual bool Damage(float d)
+	{
+		return true;		// Can't be damaged
 	}
 
 private:
@@ -173,6 +183,7 @@ public:
 		vy = _vy;
 		bDead = false;
 		nBounceBeforeDeath = 1;
+		bStable = false;
 	}
 
 	virtual void Draw(olc::PixelGameEngine* engine, float fOffsetX, float fOffsetY, bool bPixel = false)
@@ -183,6 +194,11 @@ public:
 	virtual int BounceDeathAction()
 	{
 		return 20;		// Gives the Boom function a radius of 20 to make big explosions
+	}
+
+	virtual bool Damage(float d)
+	{
+		return true;
 	}
 
 private:
@@ -208,8 +224,8 @@ vector<pair<float, float>> DefineMissile()
 	
 	for (auto& v : vecModel)		// Scales points to make the shape unit sized
 	{
-		v.first /= 2.5f;
-		v.second /= 2.5f;
+		v.first /= 1.5f;
+		v.second /= 1.5f;
 	}
 	return vecModel;
 }
@@ -224,6 +240,7 @@ public:
 		fFriction = 0.2f;
 		bDead = false;
 		nBounceBeforeDeath = -1;
+		bStable = false;
 		
 		if (sprWorm == nullptr)		// Loads sprite data from sprite file
 			sprWorm = new olc::Sprite("Sprites/worms1.png");
@@ -235,7 +252,7 @@ public:
 
 		if (bIsPlayable)		// Draws Worm Sprite with health bar, in it's team's colors
 		{
-			engine->DrawPartialSprite(px - fOffsetX - radius, py - fOffsetY - radius, sprWorm, 0, 0, 8, 8);
+			engine->DrawPartialSprite(px - fOffsetX - radius, py - fOffsetY - radius, sprWorm, nTeam * 8, 0, 8, 8);
 
 			for (int i = 0; i < 11 * fHealth; i++)		// Draws health bar for worm
 			{
@@ -256,9 +273,19 @@ public:
 		return 0;		// Nothing
 	}
 
-	float fShootAngle = 0.0f;
+	virtual bool Damage(float d) // Reduce worm's health by said amount
+	{
+		fHealth -= d;
+		if (fHealth <= 0)		// Worm has died, no longer playable
+		{ 
+			fHealth = 0.0f;
+			bIsPlayable = false;
+		}
+		return fHealth > 0;
+	}
 
 public:
+	float fShootAngle = 0.0f;
 	float fHealth = 1.0f;
 	bool bIsPlayable = true;
 	int nTeam = 0;		// The ID of which team this worm belongs to
@@ -308,7 +335,7 @@ private:
 	// For map size
 	int nMapWidth = 1024;
 	int nMapHeight = 512;
-	unsigned char* map = nullptr;
+	char* map = nullptr;
 
 	// For camera control
 	float fCameraPosX = 0.0f;
@@ -325,7 +352,8 @@ private:
 		GS_ALLOCATING_UNITS,
 		GS_START_PLAY,
 		GS_CAMERA_MODE,
-		GS_GAME_OVER1
+		GS_GAME_OVER1,
+		GS_GAME_OVER2
 	} nGameState, nNextState;
 
 	enum AI_STATE		// State machine for AI player control
@@ -379,18 +407,27 @@ private:
 
 	virtual bool OnUserCreate()		// Creates the map
 	{
-		map = new unsigned char[nMapWidth * nMapHeight];		// Allocate memory for 2D array
+		map = new char[nMapWidth * nMapHeight];		// Allocate memory for 2D array
 		memset(map, 0, nMapWidth * nMapHeight * sizeof(unsigned char));		// Clear all to 0
 
 		// State machine creates map
 		nGameState = GS_RESET;
 		nNextState = GS_RESET;
+		nAIState = AI_ASSESS_ENVIRONMENT;
+		nAINextState = AI_ASSESS_ENVIRONMENT;
+
+		bGameIsStable = false;
 
 		return true;
 	}
 
 	virtual bool OnUserUpdate(float fElapsedTime)
 	{
+		// Tab key toggles between whole map view and up close view
+		if (GetKey(olc::Key::TAB).bReleased)
+			bZoomOut = !bZoomOut;
+
+		/* Debugging items
 		if (GetKey(olc::Key::M).bReleased)		// Whenever 'M' key is released, generate new map
 			CreateMap();
 
@@ -407,6 +444,7 @@ private:
 			pCameraTrackingObject = worm;
 			listObjects.push_back(unique_ptr<cWorm>(worm));
 		}
+		*/
 
 		// Controller camera for mouse edge map scrolling
 		float fMapScrollSpeed = 400.0f;
@@ -424,23 +462,29 @@ private:
 		{
 		case GS_RESET:		// Sets game variables to know state
 		{
-			bPlayerHasControl = false;
+			bEnablePlayerControl = false;
+			bGameIsStable = false;
+			bPlayerHasFired = false;
+			bShowCountDown = false;
 			nNextState = GS_GENERATE_TERRAIN;
 		}
 		break;
 
 		case GS_GENERATE_TERRAIN:		// Creates a new terrain
 		{
-			bPlayerHasControl = false;
+			bZoomOut = true;
 			CreateMap();
+			bGameIsStable = false;
+			bShowCountDown = false;
 			nNextState = GS_GENERATING_TERRAIN;
 		}
 		break;
 
 		case GS_GENERATING_TERRAIN:		// Does nothing, for now
 		{
-			bPlayerHasControl = false;
-			nNextState = GS_ALLOCATE_UNITS;
+			bShowCountDown = false;
+			if (bGameIsStable)
+				nNextState = GS_ALLOCATE_UNITS;
 		}
 		break;
 
@@ -484,11 +528,12 @@ private:
 
 		case GS_ALLOCATING_UNITS:		// Stays in this state while units are deploying
 		{
-			bPlayerHasControl = false;
-
 			if (bGameIsStable)
 			{
-				bPlayerActionComplete = false;
+				bEnablePlayerControl = true;
+				bEnableComputerControl = false;
+				fTurnTime = 15.0f;
+				bZoomOut = false;
 				nNextState = GS_START_PLAY;
 			}
 		}
@@ -496,9 +541,10 @@ private:
 
 		case GS_START_PLAY:		// Player is in control of unit
 		{
-			bPlayerHasControl = true;
+			bShowCountDown = true;
 
-			if (bPlayerHasFired || fTurnTime <= 0.0f)		// If player has fired weapon, or turn time is up, move on to the next state 
+			// If player has fired weapon, or turn time is up, move on to next state
+			if (bPlayerHasFired || fTurnTime <= 0.0f)
 				nNextState = GS_CAMERA_MODE;
 		}
 		break;
@@ -545,12 +591,31 @@ private:
 		}
 		break;
 
-		case GS_GAME_OVER1:
+		case GS_GAME_OVER1:		// Zooms out and launch loads of missiles!
 		{
+			bEnableComputerControl = false;
+			bEnablePlayerControl = false;
+			bZoomOut = true;
+			bShowCountDown = false;
 
+			for (int i = 0; i < 100; i++)
+			{
+				int nBombX = rand() % nMapWidth;
+				int nBombY = rand() % (nMapHeight / 2);
+				listObjects.push_back(std::unique_ptr<cMissile>(new cMissile(nBombX, nBombY, 0.0f, 0.5f)));
+			}
+
+			nNextState = GS_GAME_OVER2;
 		}
 		break;
 
+		case GS_GAME_OVER2: // Stay here and wait for chaos to settle
+		{
+			bEnableComputerControl = false;
+			bEnablePlayerControl = false;
+			// No exit from this state!
+		}
+		break;
 		}
 
 		if (bEnableComputerControl)		// AI State Machine
@@ -763,99 +828,103 @@ private:
 			}
 		}
 
-		// Handles user input
-		if (bPlayerHasControl)
+		
+		fTurnTime -= fElapsedTime;		// Decreases turn time
+
+		if (pObjectUnderControl != nullptr)		// If not null, then pointing to a worm
 		{
-			fTurnTime -= fElapsedTime;		// Decreases turn time
+			pObjectUnderControl->ax = 0.0f;
 
-			if (pObjectUnderControl != nullptr)		// If not null, then pointing to a worm
+			if (pObjectUnderControl->bStable)		// Ensures user input applies only when object is stable
 			{
-				if (pObjectUnderControl->bStable)		// Ensures user input applies only when object is stable
+				// When 'Z' is pressed, worm jumps in the aimed direction, if player is in control; If computer is in control, AI jumps
+				if ((bEnablePlayerControl && GetKey(olc::Key::Z).bPressed) || (bEnableComputerControl && bAI_Jump))
 				{
-					// When 'Z' is pressed, worm jumps in the aimed direction, if player is in control; If computer is in control, AI jumps
-					if ((bEnablePlayerControl && GetKey(olc::Key::Z).bPressed) || (bEnableComputerControl && bAI_Jump))
-					{
-						float a = ((cWorm*)pObjectUnderControl)->fShootAngle;
-						pObjectUnderControl->vx = 4.0f * cosf(a);
-						pObjectUnderControl->vy = 8.0f * sinf(a);
-						pObjectUnderControl->bStable = false;
-					}
+					float a = ((cWorm*)pObjectUnderControl)->fShootAngle;
 
-					// When 'A' is held, curser turns counter-clockwise if player is in control; If computer is in control, AI aims left
-					if ((bEnablePlayerControl && GetKey(olc::Key::A).bHeld) || (bEnableComputerControl && bAI_AimLeft))
-					{
-						cWorm* worm = (cWorm*)pObjectUnderControl;
-						worm->fShootAngle -= 1.0f * fElapsedTime;
+					pObjectUnderControl->vx = 4.0f * cosf(a);
+					pObjectUnderControl->vy = 8.0f * sinf(a);
+					pObjectUnderControl->bStable = false;
 
-						if (worm->fShootAngle < -3.14159f)		// If below -pi, wraps around back to pi
-							worm->fShootAngle += 3.14159f * 2.0f;
-					}
-
-					// When 'S' is held, curser turns clockwise if player is in control; If computer is in control, AI aims right
-					if ((bEnablePlayerControl && GetKey(olc::Key::S).bHeld) || (bEnableComputerControl && bAI_AimRight))
-					{
-						cWorm* worm = (cWorm*)pObjectUnderControl;
-						worm->fShootAngle += 1.0f * fElapsedTime;
-
-						if (worm->fShootAngle > 3.14159f)		// If above pi, wraps around back to -pi
-							worm->fShootAngle -= 3.14159f * 2.0f;
-					}
-
-					if ((bEnablePlayerControl && GetKey(olc::Key::SPACE).bPressed))		// When spacebar is pressed, start charging weapon, if player is in control
-					{
-						bEnergising = true;
-						bFireWeapon = false;
-						fEnergyLevel = 0.0f;
-					}
-
-					// When spacebar is being held down, increse weapon charge if player is in control; If computer is in control, AI charges weapon
-					if ((bEnablePlayerControl && GetKey(olc::Key::SPACE).bHeld) || (bEnableComputerControl && bAI_Energise))		
-					{
-						if (bEnergising)
-						{
-							fEnergyLevel += 0.75f * fElapsedTime;
-							if (fEnergyLevel >= 1.0f)		// If energy level reaches max, fire weapon
-							{
-								fEnergyLevel = 1.0f;
-								bFireWeapon = true;
-							}
-						}
-					}
-
-					if ((bEnablePlayerControl && GetKey(olc::Key::SPACE).bReleased))		// When spacebar is released, fire weapon if player is in control
-					{
-						if (bEnergising)		// While being charged up, as soon as released, weapon fires
-							bFireWeapon = true;
-
-						bEnergising = true;
-					}
+					bAI_Jump = false;
 				}
 
-				if (bFireWeapon)
+				// When 'A' is held, curser turns counter-clockwise if player is in control; If computer is in control, AI aims left
+				if ((bEnablePlayerControl && GetKey(olc::Key::A).bHeld) || (bEnableComputerControl && bAI_AimLeft))
 				{
 					cWorm* worm = (cWorm*)pObjectUnderControl;
+					worm->fShootAngle -= 1.0f * fElapsedTime;
 
-					// Gets weapon origin
-					float ox = worm->px;
-					float oy = worm->py;
+					if (worm->fShootAngle < -3.14159f)		// If below -pi, wraps around back to pi
+						worm->fShootAngle += 3.14159f * 2.0f;
+				}
 
-					// Gets weapon direction
-					float dx = cosf(worm->fShootAngle);
-					float dy = sinf(worm->fShootAngle);
+				// When 'S' is held, curser turns clockwise if player is in control; If computer is in control, AI aims right
+				if ((bEnablePlayerControl && GetKey(olc::Key::S).bHeld) || (bEnableComputerControl && bAI_AimRight))
+				{
+					cWorm* worm = (cWorm*)pObjectUnderControl;
+					worm->fShootAngle += 1.0f * fElapsedTime;
 
-					// Creates weapon object and adds it to the object list
-					cMissile* m = new cMissile(ox, oy, dx * 40.0f * fEnergyLevel, dy * 40.0f * fEnergyLevel);
-					listObjects.push_back(unique_ptr<cMissile>(m));
-					pCameraTrackingObject = m;		// Makes camera track missile
+					if (worm->fShootAngle > 3.14159f)		// If above pi, wraps around back to -pi
+						worm->fShootAngle -= 3.14159f * 2.0f;
+				}
 
-
-					// Resets all weapon states
+				if ((bEnablePlayerControl && GetKey(olc::Key::SPACE).bPressed))		// When spacebar is pressed, start charging weapon, if player is in control
+				{
+					bEnergising = true;
 					bFireWeapon = false;
 					fEnergyLevel = 0.0f;
-					bEnergising = false;
-
-					bPlayerActionComplete = true;
 				}
+
+				// When spacebar is being held down, increse weapon charge if player is in control; If computer is in control, AI charges weapon
+				if ((bEnablePlayerControl && GetKey(olc::Key::SPACE).bHeld) || (bEnableComputerControl && bAI_Energise))		
+				{
+					if (bEnergising)
+					{
+						fEnergyLevel += 0.75f * fElapsedTime;
+						if (fEnergyLevel >= 1.0f)		// If energy level reaches max, fire weapon
+						{
+							fEnergyLevel = 1.0f;
+							bFireWeapon = true;
+						}
+					}
+				}
+
+				if ((bEnablePlayerControl && GetKey(olc::Key::SPACE).bReleased))		// When spacebar is released, fire weapon if player is in control
+				{
+					if (bEnergising)		// While being charged up, as soon as released, weapon fires
+						bFireWeapon = true;
+
+					bEnergising = true;
+				}
+			}
+
+			if (bFireWeapon)
+			{
+				cWorm* worm = (cWorm*)pObjectUnderControl;
+
+				// Gets weapon origin
+				float ox = worm->px;
+				float oy = worm->py;
+
+				// Gets weapon direction
+				float dx = cosf(worm->fShootAngle);
+				float dy = sinf(worm->fShootAngle);
+
+				// Creates weapon object and adds it to the object list
+				cMissile* m = new cMissile(ox, oy, dx * 40.0f * fEnergyLevel, dy * 40.0f * fEnergyLevel);
+				listObjects.push_back(unique_ptr<cMissile>(m));
+				pCameraTrackingObject = m;		// Makes camera track missile
+
+
+				// Resets all weapon states
+				bFireWeapon = false;
+				fEnergyLevel = 0.0f;
+				bEnergising = false;
+				bPlayerHasFired = true;
+
+				if (rand() % 100 >= 50)
+					bZoomOut = true;
 			}
 		}
 
@@ -864,8 +933,8 @@ private:
 			// Makes camera's current position slowly inerpolate between current and target position
 			fCameraPosXTarget = pCameraTrackingObject->px - ScreenWidth() / 2;
 			fCameraPosYTarget = pCameraTrackingObject->py - ScreenHeight() / 2;
-			fCameraPosX += (fCameraPosXTarget - fCameraPosX) * 5.0f * fElapsedTime;
-			fCameraPosY += (fCameraPosYTarget - fCameraPosY) * 5.0f * fElapsedTime;
+			fCameraPosX += (fCameraPosXTarget - fCameraPosX) * 15.0f * fElapsedTime;
+			fCameraPosY += (fCameraPosYTarget - fCameraPosY) * 15.0f * fElapsedTime;
 		}
 
 		// Clamp map boundaries to keep camera in bounds
@@ -927,49 +996,52 @@ private:
 					}
 				}
 
-					// Calculates magnitudes of response and velocity vectors
-					float fMagVelocity = sqrtf(p->vx * p->vx + p->vy * p->vy);
-					float fMagResponse = sqrtf(fResponseX * fResponseX + fResponseY * fResponseY);
+				// Calculates magnitudes of response and velocity vectors
+				float fMagVelocity = sqrtf(p->vx * p->vx + p->vy * p->vy);
+				float fMagResponse = sqrtf(fResponseX * fResponseX + fResponseY * fResponseY);
 
-					// Find angle of collision
-					if (bCollision)		// If collision has occured, respond
-					{
-						p->bStable = true;
+				if (p->px < 0 || p->px > nMapWidth || p->py <0 || p->py > nMapHeight)
+					p->bDead = true;
+
+				// Find angle of collision
+				if (bCollision)		// If collision has occured, respond
+				{
+					p->bStable = true;
 												
-						// Calculates reflection vector of objects velocity vector, using response vector as normal
-						float dot = p->vx * (fResponseX / fMagResponse) + p->vy * (fResponseY / fMagResponse);
+					// Calculates reflection vector of objects velocity vector, using response vector as normal
+					float dot = p->vx * (fResponseX / fMagResponse) + p->vy * (fResponseY / fMagResponse);
 
-						// Uses the friction coefficient to dampen response (approximates energy loss)
-						p->vx = p->fFriction * (-2.0f * dot * (fResponseX / fMagResponse) + p->vx);
-						p->vy = p->fFriction * (-2.0f * dot * (fResponseY / fMagResponse) + p->vy);
+					// Uses the friction coefficient to dampen response (approximates energy loss)
+					p->vx = p->fFriction * (-2.0f * dot * (fResponseX / fMagResponse) + p->vx);
+					p->vy = p->fFriction * (-2.0f * dot * (fResponseY / fMagResponse) + p->vy);
 
-						if (p->nBounceBeforeDeath > 0)		// Makes some objects 'die' after several bounces
-						{
-							p->nBounceBeforeDeath--;
-							p->bDead = p->nBounceBeforeDeath == 0;
-
-							if (p->bDead)		// Action upon an objects death; If greater than 0 creates an explosion
-							{
-								int nResponse = p->BounceDeathAction();
-								if (nResponse > 0)
-								{
-									Boom(p->px, p->py, nResponse);
-									pCameraTrackingObject = nullptr;		// After debris settles, camera goes back to player
-								}
-							}
-
-						}
-					}
-					else		// Else allow it to use the new potential positions
+					if (p->nBounceBeforeDeath > 0)		// Makes some objects 'die' after several bounces
 					{
-						// Updates objects position with potential x,y coordinates
-						p->px = fPotentialX;
-						p->py = fPotentialY;
-					}
+						p->nBounceBeforeDeath--;
+						p->bDead = p->nBounceBeforeDeath == 0;
 
-					// Makes objects stop moving when velocity is low
-					if (fMagVelocity < 0.1f)
-						p->bStable = true;
+						if (p->bDead)		// Action upon an objects death; If greater than 0 creates an explosion
+						{
+							int nResponse = p->BounceDeathAction();
+							if (nResponse > 0)
+							{
+								Boom(p->px, p->py, nResponse);
+								pCameraTrackingObject = nullptr;		// After debris settles, camera goes back to player
+							}
+						}
+
+					}
+				}
+				else		// Else allow it to use the new potential positions
+				{
+					// Updates objects position with potential x,y coordinates
+					p->px = fPotentialX;
+					p->py = fPotentialY;
+				}
+
+				// Makes objects stop moving when velocity is low
+				if (fMagVelocity < 0.1f)
+					p->bStable = true;
 			}
 			// Removes objects from list if dead flag is true; Because it is a unique ptr, will go out of scope and automatically delete
 			listObjects.remove_if([](unique_ptr<cPhysicsObject>& o) {return o->bDead;});
@@ -1086,6 +1158,7 @@ private:
 		}
 
 		nGameState = nNextState;
+		nAIState = nAINextState;
 
 		return true;
 	}
@@ -1149,6 +1222,9 @@ private:
 			}
 		};
 
+		int bx = (int)fWorldX;
+		int by = (int)fWorldY;
+
 		CircleBresenham(fWorldX, fWorldY, fRadius);		// Erases terrain to form a crater
 
 		for (auto& p : listObjects)		// Knocks back other objects in range using pythagorean theorem
@@ -1163,16 +1239,14 @@ private:
 			{
 				p->vx = (dx / fDist) * fRadius;
 				p->vy = (dy / fDist) * fRadius;
+				p->Damage(((fRadius - fDist) / fRadius) * 0.8f);
 				p->bStable = false;
 			}
 		}
 
-
 		for (int i = 0; i < (int)fRadius; i++)		// Radius allows big explosions to make lots of debris and small ones to make fewer
 			listObjects.push_back(unique_ptr<cDebris>(new cDebris(fWorldX, fWorldY)));
-
 	}
-
 
 	void CreateMap()
 	{
@@ -1192,7 +1266,13 @@ private:
 				if (y >= fSurface[x] * nMapHeight)		// If map pixel > surface pixel, make it land
 					map[y * nMapWidth + x] = 1;
 				else
-					map[y * nMapWidth + x] = 0;			// Else leave it as sky
+				{
+					// Shade the sky according to altitude - we only do top 1/3 of map, as the Boom() function will just paint in 0 (cyan)
+					if ((float)y < (float)nMapHeight / 3.0f)
+						map[y * nMapWidth + x] = (-8.0f * ((float)y / (nMapHeight / 3.0f))) - 1.0f;
+					else
+						map[y * nMapWidth + x] = 0;
+				}
 			}
 
 		delete[] fSurface;
@@ -1234,7 +1314,7 @@ private:
 int main()
 {
 	Worms game;
-	game.Construct(600, 400, 2, 2);
+	game.Construct(640, 400, 2, 2);
 	game.Start();
 
 	return 0;
