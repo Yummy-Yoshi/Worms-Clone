@@ -328,6 +328,16 @@ private:
 		GS_GAME_OVER1
 	} nGameState, nNextState;
 
+	enum AI_STATE		// State machine for AI player control
+	{
+		AI_ASSESS_ENVIRONMENT = 0,
+		AI_MOVE,
+		AI_CHOOSE_TARGET,
+		AI_POSITION_FOR_TARGET,
+		AI_AIM,
+		AI_FIRE,
+	} nAIState, nAINextState;
+
 	bool bGameIsStable = false;		// Represents overall stablity of game
 	bool bPlayerHasControl = false;		// Represents whether player has control over character
 	bool bPlayerActionComplete = false;		// Represents whether player has finished an action
@@ -352,6 +362,20 @@ private:
 
 	// Current team being controlled
 	int nCurrentTeam = 0;
+
+	// AI control flags
+	bool bAI_Jump = false;		// AI has pressed "JUMP" key
+	bool bAI_AimLeft = false;		// AI has pressed "AIM_LEFT" key
+	bool bAI_AimRight = false;		// AI has pressed "AIM_RIGHT" key
+	bool bAI_Energise = false;		// AI has pressed "FIRE" key
+
+
+	float fAITargetAngle = 0.0f;		// Angle AI should aim for
+	float fAITargetEnergy = 0.0f;		// Energy level AI should aim for
+	float fAISafePosition = 0.0f;		// X-Coordinate considered safe for AI to move to
+	cWorm* pAITargetWorm = nullptr;		// Pointer to worm AI has selected as target
+	float fAITargetX = 0.0f;		// X-Coordinate of target missile location
+	float fAITargetY = 0.0f;		// Y-Coordinate of target missile location
 
 	virtual bool OnUserCreate()		// Creates the map
 	{
@@ -529,6 +553,216 @@ private:
 
 		}
 
+		if (bEnableComputerControl)		// AI State Machine
+		{
+			switch (nAIState)
+			{
+			case AI_ASSESS_ENVIRONMENT:
+			{
+
+				int nAction = rand() % 3;
+				if (nAction == 0)		// Plays defensively; moves away from team
+				{
+					// Finds nearest ally, then walks away from them
+					float fNearestAllyDistance = INFINITY;
+					float fDirection = 0;
+					cWorm* origin = (cWorm*)pObjectUnderControl;
+
+					for (auto w : vecTeams[nCurrentTeam].vecMembers)
+					{
+						if (w != pObjectUnderControl)
+						{
+							if (fabs(w->px - origin->px) < fNearestAllyDistance)
+							{
+								fNearestAllyDistance = fabs(w->px - origin->px);
+								fDirection = (w->px - origin->px) < 0.0f ? 1.0f : -1.0f;
+							}
+						}
+					}
+
+					if (fNearestAllyDistance < 50.0f)
+						fAISafePosition = origin->px + fDirection * 80.0f;
+					else
+						fAISafePosition = origin->px;
+				}
+
+				if (nAction == 1)		// Plays aggresively; moves towards middle
+				{
+					cWorm* origin = (cWorm*)pObjectUnderControl;
+					float fDirection = ((float)(nMapWidth / 2.0f) - origin->px) < 0.0f ? -1.0f : 1.0f;
+					fAISafePosition = origin->px + fDirection * 200.0f;
+				}
+
+				if (nAction == 2)		// Plays dumb; doesn't move
+				{
+					cWorm* origin = (cWorm*)pObjectUnderControl;
+					fAISafePosition = origin->px;
+				}
+
+				// Clamps so they don't walk off of the map
+				if (fAISafePosition <= 20.0f) fAISafePosition = 20.0f;
+				if (fAISafePosition >= nMapWidth - 20.0f) fAISafePosition = nMapWidth - 20.0f;
+				nAINextState = AI_MOVE;
+			}
+			break;
+
+			case AI_MOVE:		// Moving in this game is performed solely by jumping
+			{
+				cWorm* origin = (cWorm*)pObjectUnderControl;
+				if (fTurnTime >= 8.0f && origin->px != fAISafePosition)		// If not in safe position, move towards it, within 8 seconds
+				{
+					if (fAISafePosition < origin->px && bGameIsStable)		// Jump towards target until worm is in range
+					{
+						origin->fShootAngle = -3.14159f * 0.6f;		// Find shooting angle for AI player to angle jump
+						bAI_Jump = true;		// Manually presses jump key for AI player
+						nAINextState = AI_MOVE;
+					}
+
+					if (fAISafePosition > origin->px && bGameIsStable)
+					{
+						origin->fShootAngle = -3.14159f * 0.4f;
+						bAI_Jump = true;
+						nAINextState = AI_MOVE;
+					}
+				}
+				else
+					nAINextState = AI_CHOOSE_TARGET;
+			}
+			break;
+
+			case AI_CHOOSE_TARGET:		// Worm has finished moving, so it chooses a target
+			{
+				bAI_Jump = false;		// Not sending any movement commands, so jumping is diabled
+
+				// Select a team that is not itself
+				cWorm* origin = (cWorm*)pObjectUnderControl;
+				int nCurrentTeam = origin->nTeam;
+				int nTargetTeam = 0;
+				do {
+					nTargetTeam = rand() % vecTeams.size();
+				} while (nTargetTeam == nCurrentTeam || !vecTeams[nTargetTeam].IsTeamAlive());
+
+				// The aggressive strategy is to aim for the opponent unit with the most health
+				cWorm* mostHealthyWorm = vecTeams[nTargetTeam].vecMembers[0];
+				for (auto w : vecTeams[nTargetTeam].vecMembers)
+					if (w->fHealth > mostHealthyWorm->fHealth)
+						mostHealthyWorm = w;
+
+				// Once target worm is selected, record its x & y coordinates
+				pAITargetWorm = mostHealthyWorm;
+				fAITargetX = mostHealthyWorm->px;
+				fAITargetY = mostHealthyWorm->py;
+				nAINextState = AI_POSITION_FOR_TARGET;
+			}
+			break;
+
+			case AI_POSITION_FOR_TARGET:		// Calculates trajectory for target, if the worm needs to move, do so
+			{
+				cWorm* origin = (cWorm*)pObjectUnderControl;
+				float dy = -(fAITargetY - origin->py);
+				float dx = -(fAITargetX - origin->px);
+				float fSpeed = 30.0f;
+				float fGravity = 2.0f;
+
+				bAI_Jump = false;
+
+				// Angle distance equation to hit a coordinate
+				float a = fSpeed * fSpeed * fSpeed * fSpeed - fGravity * (fGravity * dx * dx + 2.0f * dy * fSpeed * fSpeed);
+
+				if (a < 0)		// Target is out of range
+				{
+					if (fTurnTime >= 5.0f)		// Will only move if there are more than 5 seconds left on the clock
+					{
+						if (pAITargetWorm->px < origin->px && bGameIsStable)		// Jump towards target until it is in range
+						{
+							origin->fShootAngle = -3.14159f * 0.6f;
+							bAI_Jump = true;
+							nAINextState = AI_POSITION_FOR_TARGET;
+						}
+
+						if (pAITargetWorm->px > origin->px && bGameIsStable)
+						{
+							origin->fShootAngle = -3.14159f * 0.4f;
+							bAI_Jump = true;
+							nAINextState = AI_POSITION_FOR_TARGET;
+						}
+					}
+					else
+					{
+						// Worm is stuck, so just fire in the direction of the targeted enemy
+						// It's dangerous to itself, but may clear a blockage
+						fAITargetAngle = origin->fShootAngle;
+						fAITargetEnergy = 0.75f;
+						nAINextState = AI_AIM;
+					}
+				}
+				else
+				{
+					// Worm is close enough, calculate trajectory
+					float b1 = fSpeed * fSpeed + sqrtf(a);
+					float b2 = fSpeed * fSpeed - sqrtf(a);
+
+					float fTheta1 = atanf(b1 / (fGravity * dx));		// Max Height
+					float fTheta2 = atanf(b2 / (fGravity * dx));		// Min Height
+
+					// Uses max as it has a greater chance of avoiding obstacles
+					fAITargetAngle = fTheta1 - (dx > 0 ? 3.14159f : 0.0f);
+					float fFireX = cosf(fAITargetAngle);
+					float fFireY = sinf(fAITargetAngle);
+
+					// AI is clamped to 3/4 power, to make things fair against human players
+					fAITargetEnergy = 0.75f;
+					nAINextState = AI_AIM;
+				}
+			}
+			break;
+
+			case AI_AIM: // Lines up aim cursor
+			{
+				cWorm* worm = (cWorm*)pObjectUnderControl;
+
+				bAI_AimLeft = false;
+				bAI_AimRight = false;
+				bAI_Jump = false;
+
+				if (worm->fShootAngle < fAITargetAngle)
+					bAI_AimRight = true;
+				else
+					bAI_AimLeft = true;
+
+				// Once the cursors are aligned, fire missile
+				// Some noise could be added to the floating point value to give the AI varying accuracy, to manage game difficulty
+				if (fabs(worm->fShootAngle - fAITargetAngle) <= 0.001f)
+				{
+					bAI_AimLeft = false;
+					bAI_AimRight = false;
+					fEnergyLevel = 0.0f;
+					nAINextState = AI_FIRE;
+				}
+				else
+					nAINextState = AI_AIM;
+			}
+			break;
+
+			case AI_FIRE:
+			{
+				bAI_Energise = true;
+				bFireWeapon = false;
+				bEnergising = true;		// Energize amount will always be fixed to 0.75, but it's nice to still show the animation to the player
+
+				if (fEnergyLevel >= fAITargetEnergy)
+				{
+					bFireWeapon = true;
+					bAI_Energise = false;
+					bEnergising = false;
+					bEnableComputerControl = false;
+					nAINextState = AI_ASSESS_ENVIRONMENT;
+				}
+			}
+			break;
+			}
+		}
+
 		// Handles user input
 		if (bPlayerHasControl)
 		{
@@ -538,7 +772,8 @@ private:
 			{
 				if (pObjectUnderControl->bStable)		// Ensures user input applies only when object is stable
 				{
-					if (GetKey(olc::Key::Z).bPressed)		// When 'Z' is pressed, worm jumps in the aimed direction
+					// When 'Z' is pressed, worm jumps in the aimed direction, if player is in control; If computer is in control, AI jumps
+					if ((bEnablePlayerControl && GetKey(olc::Key::Z).bPressed) || (bEnableComputerControl && bAI_Jump))
 					{
 						float a = ((cWorm*)pObjectUnderControl)->fShootAngle;
 						pObjectUnderControl->vx = 4.0f * cosf(a);
@@ -546,7 +781,8 @@ private:
 						pObjectUnderControl->bStable = false;
 					}
 
-					if (GetKey(olc::Key::A).bHeld)		// When 'A' is held, curser turns counter clockwise
+					// When 'A' is held, curser turns counter-clockwise if player is in control; If computer is in control, AI aims left
+					if ((bEnablePlayerControl && GetKey(olc::Key::A).bHeld) || (bEnableComputerControl && bAI_AimLeft))
 					{
 						cWorm* worm = (cWorm*)pObjectUnderControl;
 						worm->fShootAngle -= 1.0f * fElapsedTime;
@@ -555,7 +791,8 @@ private:
 							worm->fShootAngle += 3.14159f * 2.0f;
 					}
 
-					if (GetKey(olc::Key::S).bHeld)		// When 'S' is held, curser turns clockwise
+					// When 'S' is held, curser turns clockwise if player is in control; If computer is in control, AI aims right
+					if ((bEnablePlayerControl && GetKey(olc::Key::S).bHeld) || (bEnableComputerControl && bAI_AimRight))
 					{
 						cWorm* worm = (cWorm*)pObjectUnderControl;
 						worm->fShootAngle += 1.0f * fElapsedTime;
@@ -564,14 +801,15 @@ private:
 							worm->fShootAngle -= 3.14159f * 2.0f;
 					}
 
-					if (GetKey(olc::Key::SPACE).bPressed)		// When spacebar is pressed, start charging weapon
+					if ((bEnablePlayerControl && GetKey(olc::Key::SPACE).bPressed))		// When spacebar is pressed, start charging weapon, if player is in control
 					{
 						bEnergising = true;
 						bFireWeapon = false;
 						fEnergyLevel = 0.0f;
 					}
 
-					if (GetKey(olc::Key::SPACE).bHeld)		// When spacebar is being held down, increse weapon charge
+					// When spacebar is being held down, increse weapon charge if player is in control; If computer is in control, AI charges weapon
+					if ((bEnablePlayerControl && GetKey(olc::Key::SPACE).bHeld) || (bEnableComputerControl && bAI_Energise))		
 					{
 						if (bEnergising)
 						{
@@ -584,7 +822,7 @@ private:
 						}
 					}
 
-					if (GetKey(olc::Key::SPACE).bReleased)		// When spacebar is released, fire weapon
+					if ((bEnablePlayerControl && GetKey(olc::Key::SPACE).bReleased))		// When spacebar is released, fire weapon if player is in control
 					{
 						if (bEnergising)		// While being charged up, as soon as released, weapon fires
 							bFireWeapon = true;
