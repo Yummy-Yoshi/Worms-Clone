@@ -408,7 +408,7 @@ private:
 	virtual bool OnUserCreate()		// Creates the map
 	{
 		map = new char[nMapWidth * nMapHeight];		// Allocate memory for 2D array
-		memset(map, 0, nMapWidth * nMapHeight * sizeof(unsigned char));		// Clear all to 0
+		memset(map, 0, nMapWidth * nMapHeight * sizeof(char));		// Clear all to 0
 
 		// State machine creates map
 		nGameState = GS_RESET;
@@ -963,7 +963,7 @@ private:
 				float fPotentialY = p->py + p->vy * fElapsedTime;
 
 				// Resets acceleration and stability
-				p->ax - 0.0f;
+				p->ax = 0.0f;
 				p->ay = 0.0f;
 				p->bStable = false;
 
@@ -974,7 +974,7 @@ private:
 				bool bCollision = false;
 
 				// Iterates though a semicircle of an object's radius that's rotated towards the direction of travel
-				for (float r = fAngle - 3.14159f / 2.0f; r < fAngle + 3.14159f / 2.0f; r += 3.14159f / 8.0f)
+				for (float r = fAngle - 3.14159f / 2.0f; r < fAngle + 3.14159f / 2.0f; r += 3.14159f / 4.0f)
 				{
 					// Calculates the test point on circumference of circle
 					float fTestPosX = (p->radius) * cosf(r) + fPotentialX;
@@ -986,8 +986,8 @@ private:
 					if (fTestPosX < 0) fTestPosX = 0;
 					if (fTestPosY < 0) fTestPosY = 0;
 
-					// Tests if any of the points on an object's semicircle intersects with the terrian
-					if (map[(int)fTestPosY * nMapWidth + (int)fTestPosX] != 0)
+					// Tests if any of the points on an object's semicircle intersects with the terrain
+					if (map[(int)fTestPosY * nMapWidth + (int)fTestPosX] > 0)
 					{
 						// Accumulates collision points to define the normal vector for escape response
 						fResponseX += fPotentialX - fTestPosX;
@@ -1314,8 +1314,8 @@ private:
 int main()
 {
 	Worms game;
-	game.Construct(640, 400, 2, 2);
-	game.Start();
+	if (game.Construct(640, 400, 2, 2))
+		game.Start();
 
 	return 0;
 }
