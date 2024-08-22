@@ -26,9 +26,13 @@ Using Microsoft Visual Studio, run the project using the Local Windows Debugger
 
 *Right Aim* - Hold down **S** on your keyboard to turn the aiming cursor counter-clockwise.
 
-*Jump* - Input **Z** on your keyboard to make your character jump in the current aimed direction.
+*Jump* - Press **Z** on your keyboard to make your character jump in the current aimed direction.
 
 *Fire Weapon* - Hold down **Spacebar** on your keyboard to begin charging weapon and release to fire in the current aimed direction.
+
+*Toggle View* - Press **Tab** on your keyboard to toggle between player view and map view.
+
+*Scroll Screen* - Use **Mouse** to scroll through the map edges while in player view.
 
 ## Acknowledgements
 This project leverages Javidx9's Pixel Game Engine and implements concepts learned from his guides.
