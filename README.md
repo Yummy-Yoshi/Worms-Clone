@@ -21,6 +21,15 @@ Clone the project
 ```
 Using Microsoft Visual Studio, run the project using the Local Windows Debugger
 
+### Controls
+*Left Aim* - Hold down **A** on your keyboard to turn the aiming cursor counter-clockwise.
+
+*Right Aim* - Hold down **S** on your keyboard to turn the aiming cursor counter-clockwise.
+
+*Jump* - Input **Z** on your keyboard to make your character jump in the current aimed direction.
+
+*Fire Weapon* - Hold down **Spacebar** on your keyboard to begin charging weapon and release to fire in the current aimed direction.
+
 ## Acknowledgements
 This project leverages Javidx9's Pixel Game Engine and implements concepts learned from his guides.
 
@@ -28,4 +37,3 @@ This project leverages Javidx9's Pixel Game Engine and implements concepts learn
  - [Pixel Game Engine](https://github.com/OneLoneCoder/olcPixelGameEngine/tree/master)
  - [Game Engine Conversion](https://github.com/Joseph21-6147/From-ConsoleGameEngine-to-PixelGameEngine)
  - [Code-It-Yourself](https://www.youtube.com/playlist?list=PLrOv9FMX8xJE8NgepZR1etrsU63fDDGxO)
-
